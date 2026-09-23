@@ -1,4 +1,5 @@
 """loader: sibling resolution, the realization stack, submission/bathy reads, and the blob write."""
+import json
 import types
 
 import numpy as np
@@ -10,13 +11,14 @@ import levels
 import conftest
 
 
-def _write_ohc(path, tag, cp0=3989.0, rho0=1030.0):
+def _write_ohc(path, tag, cp0=3989.0, rho0=1030.0, name="ohc"):
     time = conftest.months(3)
     data = np.arange(conftest.NLON * conftest.NLAT * 3, dtype="float64").reshape(
         conftest.NLON, conftest.NLAT, 3)
     ds = xr.Dataset({"DATA": (("LONGITUDE", "LATITUDE", "TIME"), data)},
                     coords={"LONGITUDE": conftest.LON, "LATITUDE": conftest.LAT, "TIME": time})
-    ds.attrs.update({"mapped_layer": tag, "cp0": cp0, "rho0": rho0})
+    ds.attrs.update({"mapped_layer": tag, "cp0": cp0, "rho0": rho0,
+                     "quantity": json.dumps({"name": name, "scale_terms": {"cp0": cp0, "rho0": rho0}})})
     ds.to_netcdf(path)
 
 
@@ -31,8 +33,29 @@ def _write_ohcens(path, n_member=3):
 
 
 def test_member_sibling():
-    assert loader._member_sibling("/x/OHC_a.nc").endswith("OHCENS_a.nc")
-    assert loader._member_sibling("/x/bar.nc") is None
+    # publish names the pair <NAME>_ / <NAME>ENS_ from the quantity name; the loader does the same
+    assert loader._member_sibling("/x/OHC_a.nc", "ohc") == "/x/OHCENS_a.nc"
+    assert loader._member_sibling("/x/MLD_2004_2025_lev0_0.nc", "mld") == "/x/MLDENS_2004_2025_lev0_0.nc"
+    with pytest.raises(SystemExit):                                  # prefix must match the quantity
+        loader._member_sibling("/x/OHC_a.nc", "mld")
+    with pytest.raises(SystemExit):
+        loader._member_sibling("/x/bar.nc", "ohc")
+
+
+def test_load_submissions_members_need_the_quantity_attr(tmp_path):
+    # a submission without the attr can't resolve its sibling
+    ds = xr.Dataset({"DATA": (("LONGITUDE", "LATITUDE", "TIME"), np.zeros((2, 2, 1)))})
+    ds.attrs["mapped_layer"] = "15_20"
+    ds.to_netcdf(str(tmp_path / "OHC_x.nc"))
+    with pytest.raises(SystemExit):
+        loader.load_submissions([str(tmp_path / "OHC_x.nc")], with_members=True)
+
+
+def test_load_submissions_with_members_any_prefix(tmp_path):
+    _write_ohc(str(tmp_path / "MLD_x.nc"), tag="0_0", name="mld")
+    _write_ohcens(str(tmp_path / "MLDENS_x.nc"), n_member=2)
+    subs = loader.load_submissions([str(tmp_path / "MLD_x.nc")], with_members=True)
+    assert subs["0_0"]["field_value"].sizes["realization"] == 3
 
 
 def test_stack_mean_only():

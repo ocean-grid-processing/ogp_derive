@@ -1,10 +1,10 @@
 # ohc_derive
 
-`ohc_derive` builds combined-level ("synthetic-level") ocean-heat-content analysis quantities — OHCA, OHU, their trends, and gridded anomaly maps — from native-level ME4OH submissions and a standard bathymetry, writing one NetCDF per synthetic level. It works from any ME4OH-compliant submissions plus a standard bathy, so it is not tied to a single producer.
+`ohc_derive` builds combined-level ("synthetic-level") ocean-heat-content analysis quantities — OHCA, OHU, their trends, and gridded anomaly maps — from native-level ME4OH submissions and a standard bathymetry, writing one NetCDF per synthetic level. It works from the ME4OH-shaped submissions the ingest `publish` step writes (any quantity, carrying the `quantity` attr) plus a standard bathy.
 
 ## What it computes
 
-**Inputs** are the native-level `OHC_` submission NetCDFs that make up a synthetic level — its *constituents* — plus a standard bathymetry on the common grid. Each `OHC_` file is the posterior-mean field; if its `OHCENS_` sibling (same name, `OHC_` swapped for `OHCENS_`) sits alongside, the per-member ensemble is loaded too. `cell_area` is regenerated from the grid.
+**Inputs** are the native-level submission NetCDFs that make up a synthetic level — its *constituents* — plus a standard bathymetry on the common grid. Each submission is the posterior-mean field written by the ingest `publish` step, named `<NAME>_…` after its quantity (`OHC_` for ocean heat content); its `<NAME>ENS_` sibling alongside holds the per-member ensemble, and the loader resolves it from the `quantity` attr the submission carries. `cell_area` is regenerated from the grid.
 
 A **synthetic level** is an `n_fac`-weighted sum of native ME4OH levels, shallowest first — for example `0_2000` is `15_20`(×3) + `15_300` + `300_700` + `700_1850` + `1800_1850`(×3). `n_fac` scales a thin measured layer up to the slab it stands in for; each constituent carries its own dbar `top`/`bottom`, used against the bathy in the mask. The level table lives in [`levels.py`](levels.py) (`levels.LEVELS`): `0_300`, `0_700`, `0_1000`, `700_2000`, `0_2000`.
 
@@ -66,7 +66,7 @@ docker container run -v $(pwd):/app ohc_derive:test pytest
 
 ### Run
 
-See `derive.slurm` for a real example of running this on blanca at CU. With the ensemble on (the default), each constituent's `OHCENS_` sibling **must** sit next to its `OHC_` file or the loader exits, and every quantity gets a collapsed `_sd`. `--no-ensemble` is the central-only path (mean field, no `_sd`); central values are identical either way.
+See `derive.slurm` for a real example of running this on blanca at CU. With the ensemble on (the default), each constituent's `<NAME>ENS_` sibling **must** sit next to its `<NAME>_` file or the loader exits, and every quantity gets a collapsed `_sd`. `--no-ensemble` is the central-only path (mean field, no `_sd`); central values are identical either way.
 
 #### run.py options
 
@@ -74,14 +74,14 @@ All configuration is on the command line — no env, no config file. The availab
 
 | option | default | effect |
 |---|---|---|
-| `SUBMISSION.nc …` (positional) | *(required)* | the constituent `OHC_` submissions; the `OHCENS_` member siblings are found automatically. Each level selects the native constituents it needs by tag, so you can pass the whole pool of submissions and let each run pick — but the pool must hold **exactly one file per native level** (a duplicate tag, e.g. a stray window/experiment/rerun, is a hard error, not a silent last-wins). |
+| `SUBMISSION.nc …` (positional) | *(required)* | the constituent submissions (`<NAME>_…`); the `<NAME>ENS_` member siblings are found automatically. Each level selects the native constituents it needs by tag, so you can pass the whole pool of submissions and let each run pick — but the pool must hold **exactly one file per native level** (a duplicate tag, e.g. a stray window/experiment/rerun, is a hard error, not a silent last-wins). |
 | `--level` | *(required)* | the synthetic level to build (`levels.LEVELS`), e.g. `0_2000`. |
 | `--bathy` | *(required)* | standard bathymetry NetCDF on the common grid. |
 | `--quantities` | *(required)* | comma list from `ohca,ohu,ohca_trend,ohu_trend,map`. Unknown names error. |
 | `--mask` | `contiguous_from_top` | cross-layer mask prescription (`masks.REGISTRY`): `contiguous_from_top` or `fully_wet_nan`. |
 | `--require-top` | *(the level's own)* | metres of the layer's own top (from `level.low`) that must be defined for a cell to survive; overrides the level's `require_top` (in `levels.py`). Used by `contiguous_from_top`, ignored by `fully_wet_nan`. |
 | `--time-window` | *(all years)* | `YEAR0:YEAR1` — the anomaly baseline and the trend-fit years. Separator `:`, `-`, or `_`, so the filename token `2004_2025` works verbatim. |
-| `--no-ensemble` | off (ensemble **on**) | mean field only — skip the `_sd` companions and do not read the `OHCENS_` siblings. |
+| `--no-ensemble` | off (ensemble **on**) | mean field only — skip the `_sd` companions and do not read the `<NAME>ENS_` siblings. |
 | `--tag` | *(required)* | provenance tag: the **run token** in the filename (`derive_<tag>_<data>_tw<baseline>_<level>.nc`) **and** the `provenance_tag` header attr. Whitespace-stripped, never lowercased — must match the provenance record char-for-char. |
 | `--provenance-link` | *(none)* | URL/path to the provenance record; written to the `provenance_link` header attr. |
 | `--code-version` | *(required)* | URL to the exact ohc_derive code (commit/release); written to the `ohc_derive_code_version` header attr. |
