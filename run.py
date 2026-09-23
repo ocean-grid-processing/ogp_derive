@@ -62,14 +62,17 @@ def run_level(level, submissions, reference_bathy, cfg, token=None):
     # step 3 — reduce each constituent to its map-level primitives (integral + gridded field).
     maps = map_transforms.apply(masked, level)
 
-    # step 4 — compose the primitives into the requested deliverables (window sets baseline + trend fit).
-    series = temporal_transforms.apply(cfg.quantities, maps, level, window=cfg.time_window)
+    # step 4 — compose the primitives into the requested deliverables (window sets baseline + trend fit);
+    # each is stamped with the field's published units and the primitive it draws on.
+    quantity = _quantity(submissions, level)
+    series = temporal_transforms.apply(cfg.quantities, maps, level, window=cfg.time_window,
+                                       field_units=quantity["publish_units"])
 
     # step 5 — collapse each constituent's members to a standard deviation; central from the mean field.
     per_constituent = combine.collapse_sd(series)
 
     # step 6 — combine constituents: n_fac sum of values, worst-case n_fac sum of standard deviations.
-    return combine.combine_synthetic(per_constituent, level, area_m2, volume_m3, _quantity(submissions, level))
+    return combine.combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity)
 
 
 def _quantity(submissions, level):

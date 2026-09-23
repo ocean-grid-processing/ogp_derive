@@ -138,6 +138,19 @@ def test_apply_builds_each_named_quantity_per_constituent():
     assert set(out["15_20"]) == {"ohca", "ohca_trend"}
 
 
+def test_apply_stamps_field_units_and_reduction():
+    maps = {"15_20": _primitives()}
+    out = T.apply(["ohca", "ohu", "ohca_trend", "map"], maps, level=None, window=None,
+                  field_units="TJ/m^2")["15_20"]
+    for name in ("ohca", "ohu", "ohca_trend"):                     # integral-based -> area_integral
+        assert out[name].attrs["reduction"] == "area_integral"
+        assert out[name].attrs["field_units"] == "TJ/m^2"
+    assert out["map"].attrs["reduction"] == "grid"                   # stays on the grid
+    assert out["map"].attrs["field_units"] == "TJ/m^2"
+    assert out["ohca_trend"].attrs["per"] == "year"                  # the recipe's own attrs survive
+    assert out["ohu"].attrs["per"] == "month"
+
+
 def test_apply_rejects_unknown_quantity():
     with pytest.raises(SystemExit):
         T.apply(["bogus"], {"15_20": _primitives()}, level=None, window=None)

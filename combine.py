@@ -78,11 +78,14 @@ def combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity):
     data = {}
     for q in quantities:
         data[q] = _nfac_sum(per_constituent, contributors, q, "value")
-        # arithmetic drops attrs; carry the quantity's own metadata (e.g. a trend's `per`) from a source
-        data[q].attrs = dict(per_constituent[contributors[0].tag][q]["value"].attrs)
+        # arithmetic drops attrs; carry the quantity's own metadata (`field_units`, `reduction`, a
+        # trend's `per`) from a source, onto the value and its standard deviation alike
+        attrs = dict(per_constituent[contributors[0].tag][q]["value"].attrs)
+        data[q].attrs = attrs
         sd = _nfac_sum(per_constituent, contributors, q, "sd")
         if sd is not None:
             data[q + "_sd"] = sd
+            data[q + "_sd"].attrs = dict(attrs)
 
     blob = xr.Dataset(data)
     blob.attrs["level"] = level.name

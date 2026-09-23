@@ -102,5 +102,8 @@ def test_run_level_with_members_produces_sd_and_geometry(tmp_path):
     blob = run.run_level(levels.get("0_300"), subs, reference_bathy, cfg)
     A = float(grid.cell_area(conftest.LAT, conftest.LON).sum())
     assert "ohca" in blob.data_vars and "ohca_sd" in blob.data_vars
+    for v in ("ohca", "ohca_sd"):                                    # metadata rides through the combine
+        assert blob[v].attrs["reduction"] == "area_integral"
+        assert blob[v].attrs["field_units"] == conftest.OHC_QUANTITY["publish_units"]
     assert np.allclose(blob["ohca"].values, 0.0, atol=1e-6 * A)     # constant field -> anomaly ~ 0 (machine precision)
     assert np.allclose(blob["ohca_sd"].values, 0.0)                # identical members -> zero spread
