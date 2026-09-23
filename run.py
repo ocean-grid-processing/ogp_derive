@@ -19,7 +19,8 @@ time hits every realization, and each member is referenced to its own window mea
 
 Members stay per constituent until step 5; step 6 sums values linearly and standard deviations
 worst-case. Output is one dataset — each quantity plus its `_sd`, with the footprint area/volume and
-cp0/rho0 as attrs; downstream packaging derives the per-area densities and applies names and layout.
+the constituents' `quantity` table as attrs; downstream packaging derives the per-area densities and
+applies names and layout.
 """
 import argparse
 
@@ -68,13 +69,19 @@ def run_level(level, submissions, reference_bathy, cfg, token=None):
     per_constituent = combine.collapse_sd(series)
 
     # step 6 — combine constituents: n_fac sum of values, worst-case n_fac sum of standard deviations.
-    return combine.combine_synthetic(per_constituent, level, area_m2, volume_m3, _constants(submissions, level))
+    return combine.combine_synthetic(per_constituent, level, area_m2, volume_m3, _quantity(submissions, level))
 
 
-def _constants(submissions, level):
-    """Physical constants (cp0, rho0) carried from the submissions, if present."""
-    attrs = submissions[level.contributors[0].tag]["attrs"]
-    return {k: float(attrs[k]) for k in ("cp0", "rho0") if k in attrs}
+def _quantity(submissions, level):
+    """The quantity the constituents carry (the ingest [quantity] table). A synthetic level is one
+    quantity, so every constituent must carry the same table; a disagreement is a hard error."""
+    first = level.contributors[0].tag
+    quantity = submissions[first]["quantity"]
+    for c in level.contributors[1:]:
+        if submissions[c.tag]["quantity"] != quantity:
+            raise SystemExit("constituents %s and %s carry different quantity tables; a level is one quantity"
+                             % (first, c.tag))
+    return quantity
 
 
 def main():

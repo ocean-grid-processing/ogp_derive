@@ -56,12 +56,12 @@ def _member_sibling(path, quantity_name):
     return os.path.join(os.path.dirname(path), prefix[:-1] + "ENS_" + base[len(prefix):])
 
 
-def _quantity_name(attrs, path):
-    """The `name` from the submission's `quantity` attr (the ingest [quantity] table, compact JSON)."""
+def _quantity(attrs, path):
+    """The submission's `quantity` attr (the ingest [quantity] table, compact JSON) -> dict."""
     if "quantity" not in attrs:
         raise SystemExit("%s has no `quantity` attr (expected a submission from the current publish)"
                          % os.path.basename(path))
-    return json.loads(attrs["quantity"])["name"]
+    return json.loads(attrs["quantity"])
 
 
 def _load_members(path, quantity_name):
@@ -85,7 +85,8 @@ def _stack(mean_da, member_da):
 
 
 def load_submissions(paths, with_members=True):
-    """paths -> {tag: {"field_value": DataArray(realization, time, lat, lon), "attrs": dict}}.
+    """paths -> {tag: {"field_value": DataArray(realization, time, lat, lon), "attrs": dict,
+    "quantity": dict}} — `quantity` is the ingest [quantity] table the submission carries.
 
     Submissions are keyed by their native-level tag, and each level a synthetic level needs is selected
     by tag — so passing the whole pool and letting each run pick its constituents is fine. But that only
@@ -107,9 +108,10 @@ def load_submissions(paths, with_members=True):
             raise SystemExit("two submissions map to native level %s:\n  %s\n  %s\n"
                              "the pool must hold exactly one file per native level." % (tag, seen[tag], p))
         seen[tag] = p
+        quantity = _quantity(ds.attrs, p)
         mean_da = _to_tlatlon(ds["DATA"]).astype("float64")
-        members = _load_members(p, _quantity_name(ds.attrs, p)) if with_members else None
-        subs[tag] = {"field_value": _stack(mean_da, members), "attrs": dict(ds.attrs)}
+        members = _load_members(p, quantity["name"]) if with_members else None
+        subs[tag] = {"field_value": _stack(mean_da, members), "attrs": dict(ds.attrs), "quantity": quantity}
     return subs
 
 
@@ -157,8 +159,7 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
         "volume_m3": blob.attrs.get("volume_m3"),
         "constituents": contributors,
         "n_fac": {c.tag: c.n_fac for c in level.contributors},
-        "cp0": blob.attrs.get("cp0"),
-        "rho0": blob.attrs.get("rho0"),
+        "quantity": _maybe_json(blob.attrs.get("quantity")),
     })
 
 

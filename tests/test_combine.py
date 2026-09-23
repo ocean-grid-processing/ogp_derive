@@ -1,8 +1,11 @@
 """combine: the realization split (step 5) and the n_fac folds + stamped geometry (step 6)."""
+import json
+
 import numpy as np
 import xarray as xr
 
 import combine
+import conftest
 import levels
 
 
@@ -58,13 +61,14 @@ def test_nfac_sum_none_when_a_part_is_none():
 def test_combine_synthetic_builds_dataset_and_stamps_geometry():
     blob = combine.combine_synthetic(_per(2.0, 0.5, 7.0, 2.0), levels.get("0_300"),
                                      area_m2=1000.0, volume_m3=250000.0,
-                                     constants={"cp0": 3989.0, "rho0": 1030.0})
+                                     quantity=conftest.OHC_QUANTITY)
     assert np.isclose(float(blob["ohca"]), 13.0)
     assert np.isclose(float(blob["ohca_sd"]), 3.5)
     assert blob.attrs["level"] == "0_300"
     assert np.isclose(blob.attrs["area_m2"], 1000.0)
     assert np.isclose(blob.attrs["volume_m3"], 250000.0)          # passed straight through from the mask
-    assert np.isclose(blob.attrs["cp0"], 3989.0)
+    assert np.isclose(blob.attrs["cp0"], 3989.0)                  # legacy copy of the scale term
+    assert json.loads(blob.attrs["quantity"])["name"] == "ohc"
 
 
 def test_combine_synthetic_mean_only_omits_sd():

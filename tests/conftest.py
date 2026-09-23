@@ -17,6 +17,12 @@ LON = np.array([0.0, 120.0, 240.0])
 NLAT, NLON = LAT.size, LON.size
 
 
+# The ingest [quantity] table as the OHC submissions carry it (the `quantity` attr, parsed).
+OHC_QUANTITY = {"name": "ohc", "kind": "extensive", "units": "J/m2", "long_name": "ocean heat content",
+                "scale_terms": {"cp0": 3989.0, "rho0": 1030.0},
+                "publish_unit_factor": 1e12, "publish_units": "TJ/m^2"}
+
+
 def months(n, start_year=2001):
     """A monthly datetime axis of length n, starting in January of start_year."""
     return pd.date_range("%d-01-01" % start_year, periods=n, freq="MS")
