@@ -102,11 +102,13 @@ def test_run_level_identity_field_returns_the_input_and_its_spread(tmp_path):
     field = conftest.field(arr, conftest.months(n_time, start_year=2001))
     lv = levels.identity("15_20")
     subs = {"15_20": {"field_value": field, "attrs": {}, "quantity": conftest.OHC_QUANTITY}}
-    cfg = types.SimpleNamespace(quantities=["field"], mask="contiguous_from_top", require_top=None,
+    cfg = types.SimpleNamespace(quantities=["field"], mask=None, require_top=None,
                                 time_window=None, out=str(tmp_path), tag="t", no_ensemble=False,
                                 product_name="p", author="a", citation="c")
     blob = run.run_level(lv, subs, conftest.bathy(np.full((conftest.NLAT, conftest.NLON), 4000.0)), cfg)
+    assert cfg.mask == "as_published"                                # the identity level's default, resolved
     assert blob.attrs["level"] == "15_20"
+    assert "volume_m3" not in blob.attrs and blob.attrs["area_m2"] > 0
     assert np.allclose(blob["field"].values, 10.0)
     assert np.allclose(blob["field_sd"].values, 1.0)
     assert blob["field"].dims == ("time", "lat", "lon")

@@ -13,7 +13,7 @@ bounds), the standard bathy, and the required-top depth, and returns:
 area of the footprint, and the cell-area-weighted sum of the per-cell height. So land and dropped
 columns don't inflate the per-area densities, and the volume tapers with the kept column.
 
-Two prescriptions:
+Three prescriptions:
 
   `fully_wet_nan` — a cell drops where any fully-wet constituent is undefined; a constituent contributes
   where not dry and defined, else 0; the footprint is the surviving wet cells; the height is the level's
@@ -24,6 +24,13 @@ Two prescriptions:
   from the layer top down until the first undefined one, then discard it and everything below (NaN, so
   they vanish from the integral); the height is the n_fac-weighted thickness of the kept run.
   Data-driven; ignores the bathy.
+
+  `as_published` — for the identity level (one constituent): the mask publish applied is final, so
+  the data is untouched; the footprint is the cells finite at every time and member, and the
+  prescription verifies that this is the whole story — a cell finite at some times but not others
+  (a time-varying footprint) is a hard error, since every stage downstream assumes the footprint is
+  time-constant. No height: the level has no vertical extent to report, so no volume and no coverage
+  file; the footprint png is still drawn.
 
 Each prescription declares the quantity kinds it is valid for (`KINDS`): `fully_wet_nan` writes 0
 into cells that are in the grid but not this level's water, which reads as "contributes nothing"
@@ -140,29 +147,60 @@ def contiguous_from_top(level, constituents, reference_bathy, require_top):
             xr.DataArray(height, dims=("lat", "lon"), coords={"lat": lat, "lon": lon}))
 
 
+def as_published(level, constituents, reference_bathy, require_top=None):
+    """Take publish's mask as final and verify it is time-constant; see the module docstring."""
+    if len(constituents) != 1:
+        raise SystemExit("as_published takes exactly one constituent (the identity level); level %s has %d"
+                         % (level.name, len(constituents)))
+    c = constituents[0]
+    finite = c["field_value"].notnull()
+    always = finite.all(("time", "realization"))                 # the footprint: defined everywhere in the cube
+    ever = finite.any(("time", "realization"))
+    partial = int((ever & ~always).sum())
+    if partial:
+        raise SystemExit("%d cell(s) of %s are defined at some times or members but not all; the footprint "
+                         "must be time-constant (publish with incomplete_timeseries and ensemble_incomplete "
+                         "honored, or write a mask prescription for a time-varying footprint)"
+                         % (partial, c["tag"]))
+    masked = {c["tag"]: {"field_value": c["field_value"], "n_fac": c["n_fac"]}}
+    return masked, always, None
+
+
 REGISTRY = {
     "fully_wet_nan": fully_wet_nan,
     "contiguous_from_top": contiguous_from_top,
+    "as_published": as_published,
 }
 
 # prescription -> the quantity kinds it applies to
 KINDS = {
     "fully_wet_nan": {"extensive"},
     "contiguous_from_top": {"extensive", "intensive"},
+    "as_published": {"extensive", "intensive"},
 }
+
+
+def default(level):
+    """The prescription a level gets when --mask is not given: the identity level takes publish's
+    mask as final; a table level coordinates its constituents from the top down."""
+    return "as_published" if level.identity else "contiguous_from_top"
 
 
 def apply(name, level, constituents, reference_bathy, out_dir=".", require_top=None, tag=None, token=None,
           product_name="", author="", citation=""):
-    """Run the named prescription, dump its footprint png, return (masked, area_m2, volume_m3)."""
+    """Run the named prescription, dump its footprint png, return (masked, area_m2, volume_m3).
+    A prescription that reports no height (`as_published`) yields no volume and no coverage file."""
     if name not in REGISTRY:
         raise SystemExit("unknown mask prescription %r; known: %s" % (name, list(REGISTRY)))
     masked, footprint, height = REGISTRY[name](level, constituents, reference_bathy, require_top)
     _dump_png(footprint, reference_bathy, level.name, name, out_dir, tag, token, product_name, author)
+    area = grid.cell_area(footprint["lat"].values, footprint["lon"].values)
+    area_m2 = float(area.where(footprint).sum())
+    if height is None:
+        return masked, area_m2, None
     _dump_coverage(footprint, height, reference_bathy, level, name, out_dir, tag, token,
                    product_name, author, citation)
-    area = grid.cell_area(footprint["lat"].values, footprint["lon"].values)
-    return masked, float(area.where(footprint).sum()), float((area * height).sum())
+    return masked, area_m2, float((area * height).sum())
 
 
 def _dump_coverage(footprint, height, reference_bathy, level, mask_name, out_dir, tag=None, token=None,

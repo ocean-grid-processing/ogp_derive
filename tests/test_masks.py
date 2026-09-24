@@ -196,6 +196,54 @@ def test_contiguous_rejects_require_top_past_the_layer_thickness():
 
 # --- apply: area + volume --------------------------------------------------
 
+def _identity_cons(field_value, tag="15_20"):
+    lv = levels.identity(tag)
+    c = lv.contributors[0]
+    return lv, [{"tag": c.tag, "n_fac": 1, "top": c.top, "bottom": c.bottom, "field_value": field_value}]
+
+
+def test_as_published_leaves_data_alone_and_footprint_is_the_defined_cells():
+    fv = conftest.const_field(7.0, n_real=3, nan_cells=[(0, 1)])    # one cell NaN throughout
+    lv, cons_ = _identity_cons(fv)
+    masked, footprint, height = masks.as_published(lv, cons_, BATHY)
+    assert masked["15_20"]["field_value"] is fv                      # untouched, not even copied
+    assert masked["15_20"]["n_fac"] == 1
+    assert not bool(footprint.isel(lat=0, lon=1)) and int(footprint.sum()) == footprint.size - 1
+    assert height is None
+
+
+def test_as_published_rejects_a_time_varying_footprint():
+    fv = conftest.const_field(7.0, n_real=2)
+    arr = fv.values.copy()
+    arr[0, 1, 0, 0] = np.nan                                         # one realization, one month
+    fv = conftest.field(arr, fv["time"].values)
+    lv, cons_ = _identity_cons(fv)
+    with pytest.raises(SystemExit) as e:
+        masks.as_published(lv, cons_, BATHY)
+    assert "1 cell" in str(e.value)
+
+
+def test_as_published_takes_one_constituent_only():
+    with pytest.raises(SystemExit):
+        masks.as_published(LV, _default(), BATHY)
+
+
+def test_default_mask_by_level_kind():
+    assert masks.default(levels.identity("15_20")) == "as_published"
+    assert masks.default(LV) == "contiguous_from_top"
+
+
+def test_apply_as_published_area_no_volume_no_coverage(tmp_path):
+    lv, cons_ = _identity_cons(conftest.const_field(7.0, nan_cells=[(0, 1)]))
+    _, area, volume = masks.apply("as_published", lv, cons_, BATHY, out_dir=str(tmp_path), tag="t")
+    a = grid.cell_area(conftest.LAT, conftest.LON)
+    assert np.isclose(area, float(a.sum()) - float(a.isel(lat=0, lon=1)))
+    assert volume is None
+    names = [p.name for p in tmp_path.iterdir()]
+    assert not any(n.startswith("coverage_") for n in names)        # no vertical extent, no coverage file
+    assert any(n.startswith("mask_") for n in names)                # the footprint png is still drawn
+
+
 def test_apply_fully_wet_area_and_slab_volume(tmp_path):
     _, area, volume = masks.apply("fully_wet_nan", LV, _default(), BATHY, out_dir=str(tmp_path))
     a = grid.cell_area(conftest.LAT, conftest.LON)

@@ -51,6 +51,8 @@ def run_level(level, submissions, reference_bathy, cfg, token=None):
     """The six steps for one synthetic level -> its dataset."""
     constituents = levels.constituents(level, submissions)          # the native levels this band needs
     quantity = _quantity(submissions, level)
+    if cfg.mask is None:
+        cfg.mask = masks.default(level)                             # resolved here so provenance records it
     check_kind(quantity, cfg.quantities, cfg.mask, level)            # the plan must suit the quantity's kind
 
     # step 2 — apply the cross-layer mask; dumps the mask png and returns the footprint area and volume.
@@ -129,8 +131,9 @@ def main():
     ap.add_argument("--bathy", required=True, help="standard bathymetry (NetCDF on the common grid)")
     ap.add_argument("--quantities", required=True,
                     help="comma list of deliverables to build (see temporal_transforms.REGISTRY)")
-    ap.add_argument("--mask", default="contiguous_from_top",
-                    help="cross-layer mask prescription (see masks.REGISTRY)")
+    ap.add_argument("--mask", default=None,
+                    help="mask prescription (see masks.REGISTRY). Default: contiguous_from_top for a "
+                         "table level, as_published for an identity level")
     ap.add_argument("--require-top", type=float, default=None,
                     help="metres of the layer's own top that must be defined for a cell to survive; "
                          "overrides the level's own require_top (used by contiguous_from_top)")

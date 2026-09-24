@@ -90,7 +90,8 @@ def combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity):
     blob = xr.Dataset(data)
     blob.attrs["level"] = level.name
     blob.attrs["area_m2"] = area_m2
-    blob.attrs["volume_m3"] = volume_m3
+    if volume_m3 is not None:                                 # absent for a level with no vertical extent
+        blob.attrs["volume_m3"] = volume_m3
     blob.attrs["quantity"] = json.dumps(quantity, separators=(",", ":"))
     for term in ("cp0", "rho0"):
         if term in quantity.get("scale_terms", {}):
