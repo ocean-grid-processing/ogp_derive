@@ -31,6 +31,26 @@ def test_get_unknown_exits():
         levels.get("3_4")
 
 
+def test_identity_level_is_one_constituent_n_fac_1():
+    lv = levels.identity("15_300")
+    assert lv.identity and lv.name == "15_300"
+    assert (lv.low, lv.high, lv.nominal_thickness, lv.require_top) == (15, 300, 285, 285)
+    assert len(lv.contributors) == 1
+    c = lv.contributors[0]
+    assert (c.tag, c.n_fac, c.top, c.bottom) == ("15_300", 1, 15, 300)
+    assert not levels.get("0_300").identity
+
+
+def test_resolve_table_level_or_identity_of_a_lone_submission():
+    one = {"15_300": {}}
+    assert levels.resolve("0_300", one) is levels.get("0_300")   # --level given: the table, regardless
+    assert levels.resolve(None, one).identity                     # omitted, one submission: identity
+    with pytest.raises(SystemExit):                               # omitted, several: nothing to build
+        levels.resolve(None, {"15_20": {}, "15_300": {}})
+    with pytest.raises(SystemExit):
+        levels.resolve(None, {})
+
+
 def test_constituents_shallowest_first_and_attached():
     lv = levels.get("0_700")
     subs = {c.tag: {"field_value": conftest.const_field(1.0), "attrs": {}} for c in lv.contributors}

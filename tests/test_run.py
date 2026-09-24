@@ -93,6 +93,25 @@ def test_check_kind_rejects_unknown_names_and_kinds():
                        levels.get("0_300"))
 
 
+def test_run_level_identity_field_returns_the_input_and_its_spread(tmp_path):
+    # one submission, no combine: `field` comes back as the input field; `_sd` is the member spread.
+    n_time = 12
+    arr = np.empty((4, n_time, conftest.NLAT, conftest.NLON))
+    for r, v in enumerate((10.0, 9.0, 10.0, 11.0)):              # realization 0 = mean 10; members 9/10/11 -> sd 1
+        arr[r] = v
+    field = conftest.field(arr, conftest.months(n_time, start_year=2001))
+    lv = levels.identity("15_20")
+    subs = {"15_20": {"field_value": field, "attrs": {}, "quantity": conftest.OHC_QUANTITY}}
+    cfg = types.SimpleNamespace(quantities=["field"], mask="contiguous_from_top", require_top=None,
+                                time_window=None, out=str(tmp_path), tag="t", no_ensemble=False,
+                                product_name="p", author="a", citation="c")
+    blob = run.run_level(lv, subs, conftest.bathy(np.full((conftest.NLAT, conftest.NLON), 4000.0)), cfg)
+    assert blob.attrs["level"] == "15_20"
+    assert np.allclose(blob["field"].values, 10.0)
+    assert np.allclose(blob["field_sd"].values, 1.0)
+    assert blob["field"].dims == ("time", "lat", "lon")
+
+
 def test_quantity_disagreement_is_an_error():
     import pytest
     other = dict(conftest.OHC_QUANTITY, name="mld")

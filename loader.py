@@ -150,6 +150,7 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
     blob.attrs["%s_run_config" % STAGE] = _compact(vars(cfg))
     blob.attrs["%s_run_facts" % STAGE] = _compact({
         "level": level.name,
+        "identity_level": level.identity,
         "quantities": cfg.quantities,
         "mask": cfg.mask,
         "require_top": require_top,
