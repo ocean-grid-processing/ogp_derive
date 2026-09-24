@@ -52,6 +52,47 @@ def test_quantity_is_shared_across_constituents():
     assert run._quantity(subs, levels.get("0_300")) == q
 
 
+def _kind(kind):
+    return dict(conftest.OHC_QUANTITY, name="mld" if kind == "intensive" else "ohc", kind=kind)
+
+
+def test_check_kind_accepts_the_ohc_plan():
+    run.check_kind(_kind("extensive"), ["ohca", "ohu", "ohca_trend", "ohu_trend", "map"],
+                   "contiguous_from_top", levels.get("0_2000"))
+    run.check_kind(_kind("extensive"), ["ohca"], "fully_wet_nan", levels.get("0_300"))
+
+
+def test_check_kind_refuses_integral_quantities_for_an_intensive_field():
+    import pytest
+    one = levels.Level("15_20", (levels.Contributor("15_20", 1, 15, 20),), 5)   # a single constituent
+    run.check_kind(_kind("intensive"), ["map"], "contiguous_from_top", one)     # per-cell: fine
+    with pytest.raises(SystemExit) as e:
+        run.check_kind(_kind("intensive"), ["ohca", "map"], "contiguous_from_top", one)
+    assert "ohca" in str(e.value) and "integral" in str(e.value)
+
+
+def test_check_kind_refuses_zero_fill_mask_and_multi_constituent_for_intensive():
+    import pytest
+    one = levels.Level("15_20", (levels.Contributor("15_20", 1, 15, 20),), 5)
+    with pytest.raises(SystemExit) as e:
+        run.check_kind(_kind("intensive"), ["map"], "fully_wet_nan", one)
+    assert "fully_wet_nan" in str(e.value)
+    with pytest.raises(SystemExit) as e:
+        run.check_kind(_kind("intensive"), ["map"], "contiguous_from_top", levels.get("0_300"))
+    assert "thickness-weighted" in str(e.value)
+
+
+def test_check_kind_rejects_unknown_names_and_kinds():
+    import pytest
+    with pytest.raises(SystemExit):
+        run.check_kind(_kind("extensive"), ["bogus"], "contiguous_from_top", levels.get("0_300"))
+    with pytest.raises(SystemExit):
+        run.check_kind(_kind("extensive"), ["ohca"], "bogus", levels.get("0_300"))
+    with pytest.raises(SystemExit):
+        run.check_kind(dict(conftest.OHC_QUANTITY, kind="sideways"), ["ohca"], "contiguous_from_top",
+                       levels.get("0_300"))
+
+
 def test_quantity_disagreement_is_an_error():
     import pytest
     other = dict(conftest.OHC_QUANTITY, name="mld")

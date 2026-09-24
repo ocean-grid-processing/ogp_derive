@@ -25,8 +25,12 @@ Two prescriptions:
   they vanish from the integral); the height is the n_fac-weighted thickness of the kept run.
   Data-driven; ignores the bathy.
 
+Each prescription declares the quantity kinds it is valid for (`KINDS`): `fully_wet_nan` writes 0
+into cells that are in the grid but not this level's water, which reads as "contributes nothing"
+only for an extensive quantity; `contiguous_from_top` discards with NaN and suits either.
+
 Add a prescription: write `(level, constituents, reference_bathy, require_top) -> (masked, footprint,
-height)` and register it.
+height)` and register it, with the kinds it applies to.
 """
 import os
 
@@ -139,6 +143,12 @@ def contiguous_from_top(level, constituents, reference_bathy, require_top):
 REGISTRY = {
     "fully_wet_nan": fully_wet_nan,
     "contiguous_from_top": contiguous_from_top,
+}
+
+# prescription -> the quantity kinds it applies to
+KINDS = {
+    "fully_wet_nan": {"extensive"},
+    "contiguous_from_top": {"extensive", "intensive"},
 }
 
 

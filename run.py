@@ -49,6 +49,8 @@ def run(cfg):
 def run_level(level, submissions, reference_bathy, cfg, token=None):
     """The six steps for one synthetic level -> its dataset."""
     constituents = levels.constituents(level, submissions)          # the native levels this band needs
+    quantity = _quantity(submissions, level)
+    check_kind(quantity, cfg.quantities, cfg.mask, level)            # the plan must suit the quantity's kind
 
     # step 2 — apply the cross-layer mask; dumps the mask png and returns the footprint area and volume.
     require_top = cfg.require_top if cfg.require_top is not None else level.require_top
@@ -64,7 +66,6 @@ def run_level(level, submissions, reference_bathy, cfg, token=None):
 
     # step 4 — compose the primitives into the requested deliverables (window sets baseline + trend fit);
     # each is stamped with the field's published units and the primitive it draws on.
-    quantity = _quantity(submissions, level)
     series = temporal_transforms.apply(cfg.quantities, maps, level, window=cfg.time_window,
                                        field_units=quantity["publish_units"])
 
@@ -73,6 +74,37 @@ def run_level(level, submissions, reference_bathy, cfg, token=None):
 
     # step 6 — combine constituents: n_fac sum of values, worst-case n_fac sum of standard deviations.
     return combine.combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity)
+
+
+def check_kind(quantity, quantity_names, mask_name, level):
+    """Refuse a plan that would treat the quantity as the wrong kind. `extensive` (a per-area density:
+    OHC) sums over area and stacks over layers; `intensive` (a per-cell value: a mixed layer depth) does
+    neither. Each primitive and mask prescription declares the kinds it applies to; combining several
+    constituents of an intensive quantity would need a thickness-weighted mean, which isn't written.
+    """
+    kind = quantity["kind"]
+    if kind not in ("extensive", "intensive"):
+        raise SystemExit("quantity %r has unknown kind %r" % (quantity["name"], kind))
+    unknown = [n for n in quantity_names if n not in temporal_transforms.REGISTRY]
+    if unknown:
+        raise SystemExit("unknown quantity %r; known: %s" % (unknown[0], list(temporal_transforms.REGISTRY)))
+    if mask_name not in masks.REGISTRY:
+        raise SystemExit("unknown mask prescription %r; known: %s" % (mask_name, list(masks.REGISTRY)))
+    problems = []
+    for name in quantity_names:
+        primitive = temporal_transforms.REGISTRY[name][1]
+        if kind not in map_transforms.KINDS[primitive]:
+            problems.append("quantity %r draws on the %r primitive, which is not defined for an %s field"
+                            % (name, primitive, kind))
+    if kind not in masks.KINDS[mask_name]:
+        problems.append("mask %r is not defined for an %s field" % (mask_name, kind))
+    if kind == "intensive" and len(level.contributors) > 1:
+        problems.append("level %s combines %d constituents, but combining an intensive field across "
+                        "layers (a thickness-weighted mean) is not implemented"
+                        % (level.name, len(level.contributors)))
+    if problems:
+        raise SystemExit("the %s field (%s) can't be built with this plan:\n  " % (kind, quantity["name"])
+                         + "\n  ".join(problems))
 
 
 def _quantity(submissions, level):

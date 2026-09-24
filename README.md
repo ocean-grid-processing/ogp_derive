@@ -8,6 +8,8 @@
 
 A **synthetic level** is an `n_fac`-weighted sum of native ME4OH levels, shallowest first — for example `0_2000` is `15_20`(×3) + `15_300` + `300_700` + `700_1850` + `1800_1850`(×3). `n_fac` scales a thin measured layer up to the slab it stands in for; each constituent carries its own dbar `top`/`bottom`, used against the bathy in the mask. The level table lives in [`levels.py`](levels.py) (`levels.LEVELS`): `0_300`, `0_700`, `0_1000`, `700_2000`, `0_2000`.
 
+The submissions' `quantity` table names the field's **kind**: `extensive` (a per-area density, like OHC in J/m², that sums over area and stacks over layers) or `intensive` (a per-cell value, like a mixed layer depth, that does neither). Each primitive and mask prescription declares the kinds it applies to (`map_transforms.KINDS`, `masks.KINDS`), and a run is refused up front if its plan doesn't suit the field: an intensive field can't take the `integral`-based quantities (that would need an area mean, not written), can't use `fully_wet_nan` (its 0-fill means "adds nothing", an extensive idea), and can't be combined across several constituents (a thickness-weighted mean, not written). The error names each mismatch.
+
 One run builds one synthetic level (`--level`), so levels parallelize across jobs. It proceeds in six steps:
 
 1. **load** — read the constituents' submissions (mean field + members) and the standard bathy.
