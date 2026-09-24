@@ -131,6 +131,15 @@ def test_gridded_anomaly_keeps_the_grid_and_demeans_per_cell():
     assert np.allclose(out.mean("time").values, 0.0)               # constant field -> zero anomaly
 
 
+def test_field_is_the_map_primitive_untouched():
+    prim = _primitives()
+    out = T.field(prim, window=(2001, 2001))
+    assert out.dims == ("realization", "time", "lat", "lon")
+    assert np.array_equal(out.values, prim["map"].values, equal_nan=True)    # identity, window ignored
+    stamped = T.apply(["field"], {"15_20": prim}, level=None, window=None, field_units="m")["15_20"]["field"]
+    assert stamped.attrs["reduction"] == "grid" and stamped.attrs["field_units"] == "m"
+
+
 def test_apply_builds_each_named_quantity_per_constituent():
     maps = {"15_20": _primitives(), "15_300": _primitives()}
     out = T.apply(["ohca", "ohca_trend"], maps, level=None, window=None)

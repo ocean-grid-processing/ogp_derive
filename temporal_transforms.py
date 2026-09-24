@@ -9,6 +9,7 @@ short recipe over the small helpers below:
     ohca_trend   OLS slope of the annual integral over the window      -> (realization,)
     ohu_trend    OLS slope of the annual tendency over the window      -> (realization,)
     map          per-cell monthly anomaly (window baseline)            -> (realization, time, lat, lon)
+    field        the masked field itself, per cell and month             -> (realization, time, lat, lon)
 
 `_tendency` drops its leading step (no prior month), so `ohu` takes its annual mean with
 `complete=True` — a year missing that step is NaN, not a partial average — and `_slope` skips NaN
@@ -90,6 +91,12 @@ def gridded_anomaly(primitives, window):
     return _anomaly(primitives["map"], window)
 
 
+def field(primitives, window):
+    """The masked field as published, per cell and month — no transform, so the collapse yields the
+    per-cell mean and member spread. The window is unused."""
+    return primitives["map"]
+
+
 # name -> (recipe, the step-3 primitive it draws on)
 REGISTRY = {
     "ohca": (ohca, "integral"),
@@ -97,6 +104,7 @@ REGISTRY = {
     "ohca_trend": (ohca_trend, "integral"),
     "ohu_trend": (ohu_trend, "integral"),
     "map": (gridded_anomaly, "map"),
+    "field": (field, "map"),
 }
 
 

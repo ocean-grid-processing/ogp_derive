@@ -42,6 +42,7 @@ Cross-layer masking is pluggable (`masks.REGISTRY`); each prescription returns t
 | `ohca_trend` | scalar | OLS slope of the annual integral over the window |
 | `ohu_trend` | scalar | OLS slope of the annual tendency over the window |
 | `map` | (time, lat, lon) | per-cell monthly anomaly (window baseline) |
+| `field` | (time, lat, lon) | the masked field itself, per cell and month — no transform; its `_sd` is the per-cell member spread. Ignores the window |
 
 The integral-based quantities are **extensive** — the per-area submission field integrated over the footprint (e.g. TJ from a TJ/m² field), with the trends and tendency carrying the matching per-year and per-month scaling; `map` stays in the submission's per-area unit. Each variable (and its `_sd`) says so in its attrs: `field_units` is the submission's published units (from the `quantity` table) and `reduction` is `area_integral` (summed over the footprint's cell areas — units are field units × m², and dividing by `area_m2` recovers a per-area density) or `grid` (still per cell). A variable that is a rate also carries `per`, the step it is a rate over: `ohu` is the annual mean of a month-to-month difference, so `per = "month"`; the two trends are slopes against the annual axis, so `per = "year"`. `ohca` and `map` are states and carry no `per`. Turning these into per-area target densities (OHCA in J/m², OHU in W/m², and so on) is the downstream packaging step's job, done from that metadata and the geometry below.
 
@@ -79,7 +80,7 @@ All configuration is on the command line — no env, no config file. The availab
 | `SUBMISSION.nc …` (positional) | *(required)* | the constituent submissions (`<NAME>_…`); the `<NAME>ENS_` member siblings are found automatically. Each level selects the native constituents it needs by tag, so you can pass the whole pool of submissions and let each run pick — but the pool must hold **exactly one file per native level** (a duplicate tag, e.g. a stray window/experiment/rerun, is a hard error, not a silent last-wins). |
 | `--level` | *(required)* | the synthetic level to build (`levels.LEVELS`), e.g. `0_2000`. |
 | `--bathy` | *(required)* | standard bathymetry NetCDF on the common grid. |
-| `--quantities` | *(required)* | comma list from `ohca,ohu,ohca_trend,ohu_trend,map`. Unknown names error. |
+| `--quantities` | *(required)* | comma list from `ohca,ohu,ohca_trend,ohu_trend,map,field`. Unknown names error. |
 | `--mask` | `contiguous_from_top` | cross-layer mask prescription (`masks.REGISTRY`): `contiguous_from_top` or `fully_wet_nan`. |
 | `--require-top` | *(the level's own)* | metres of the layer's own top (from `level.low`) that must be defined for a cell to survive; overrides the level's `require_top` (in `levels.py`). Used by `contiguous_from_top`, ignored by `fully_wet_nan`. |
 | `--time-window` | *(all years)* | `YEAR0:YEAR1` — the anomaly baseline and the trend-fit years. Separator `:`, `-`, or `_`, so the filename token `2004_2025` works verbatim. |
