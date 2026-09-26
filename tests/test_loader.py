@@ -11,14 +11,14 @@ import levels
 import conftest
 
 
-def _write_ohc(path, tag, cp0=3989.0, rho0=1030.0, name="ohc"):
+def _write_ohc(path, tag, name="ohc"):
     time = conftest.months(3)
     data = np.arange(conftest.NLON * conftest.NLAT * 3, dtype="float64").reshape(
         conftest.NLON, conftest.NLAT, 3)
     ds = xr.Dataset({"DATA": (("LONGITUDE", "LATITUDE", "TIME"), data)},
                     coords={"LONGITUDE": conftest.LON, "LATITUDE": conftest.LAT, "TIME": time})
-    ds.attrs.update({"mapped_layer": tag, "cp0": cp0, "rho0": rho0,
-                     "quantity": json.dumps({"name": name, "scale_terms": {"cp0": cp0, "rho0": rho0}})})
+    ds.attrs.update({"mapped_layer": tag, "source": "test",
+                     "quantity": json.dumps({"name": name, "scale_terms": {"cp0": 3989.0, "rho0": 1030.0}})})
     ds.to_netcdf(path)
 
 
@@ -81,7 +81,8 @@ def test_load_submissions_mean_only(tmp_path):
     fv = subs["15_20"]["field_value"]
     assert fv.dims == ("realization", "time", "lat", "lon")
     assert fv.sizes["realization"] == 1
-    assert float(subs["15_20"]["attrs"]["cp0"]) == 3989.0
+    assert subs["15_20"]["attrs"]["source"] == "test"              # the submission's attrs ride along
+    assert subs["15_20"]["quantity"]["scale_terms"]["cp0"] == 3989.0
 
 
 def test_load_submissions_with_members(tmp_path):

@@ -67,8 +67,8 @@ def test_combine_synthetic_builds_dataset_and_stamps_geometry():
     assert blob.attrs["level"] == "0_300"
     assert np.isclose(blob.attrs["area_m2"], 1000.0)
     assert np.isclose(blob.attrs["volume_m3"], 250000.0)          # passed straight through from the mask
-    assert np.isclose(blob.attrs["cp0"], 3989.0)                  # legacy copy of the scale term
-    assert json.loads(blob.attrs["quantity"])["name"] == "ohc"
+    assert "cp0" not in blob.attrs                                 # the constants live in the quantity table
+    assert json.loads(blob.attrs["quantity"])["scale_terms"]["cp0"] == 3989.0
 
 
 def test_combine_synthetic_mean_only_omits_sd():

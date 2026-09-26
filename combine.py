@@ -69,9 +69,7 @@ def _nfac_sum(per_constituent, contributors, quantity, key):
 
 def combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity):
     """See step 6. -> xr.Dataset for one synthetic level. Area and volume come from the mask step;
-    `quantity` is the constituents' ingest [quantity] table (dict), stamped as one compact-JSON attr.
-    Its `cp0`/`rho0` scale terms, when present, are also written as standalone attrs, which the
-    emitters read by name."""
+    `quantity` is the constituents' ingest [quantity] table (dict), stamped as one compact-JSON attr."""
     contributors = level.contributors
     quantities = per_constituent[contributors[0].tag]        # same quantity set for every constituent
 
@@ -93,7 +91,4 @@ def combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity):
     if volume_m3 is not None:                                 # absent for a level with no vertical extent
         blob.attrs["volume_m3"] = volume_m3
     blob.attrs["quantity"] = json.dumps(quantity, separators=(",", ":"))
-    for term in ("cp0", "rho0"):
-        if term in quantity.get("scale_terms", {}):
-            blob.attrs[term] = float(quantity["scale_terms"][term])
     return blob

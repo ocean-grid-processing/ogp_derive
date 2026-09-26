@@ -42,7 +42,7 @@ def ramp(slope=1.0, n_time=24, nan_cells=()):
 
 
 def attrs():
-    return {"cp0": 3989.0, "rho0": 1030.0}
+    return {}
 
 
 def cfg(quantities, window, out, mask="fully_wet_nan", require_top=None):
