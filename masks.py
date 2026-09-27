@@ -25,7 +25,8 @@ Three prescriptions:
   they vanish from the integral); the height is the n_fac-weighted thickness of the kept run.
   Data-driven; ignores the bathy.
 
-  `as_published` — for the identity level (one constituent): the mask publish applied is final, so
+  `as_published` — for the identity level (one constituent) built from our own publish output, asked
+  for by name: the mask publish applied is final, so
   the data is untouched; the footprint is the cells finite at every time and member, and the
   prescription verifies that this is the whole story — a cell finite at some times but not others
   (a time-varying footprint) is a hard error, since every stage downstream assumes the footprint is
@@ -180,12 +181,9 @@ KINDS = {
 }
 
 
-def default(level, contract=None):
-    """The prescription a level gets when --mask is not given. An identity level built from our own
-    publish output takes that mask as final (`as_published`, which verifies it is time-constant). Under an
-    input contract the footprint was never ours to enforce, so derive coordinates it itself: a table
-    level, or any level under a contract, gets `contiguous_from_top`."""
-    return "as_published" if (level.identity and contract is None) else "contiguous_from_top"
+# The prescription used when --mask is not given, for every level and every input. `as_published` is
+# a verification of our own publish step's footprint and is asked for by name.
+DEFAULT = "contiguous_from_top"
 
 
 def apply(name, level, constituents, reference_bathy, out_dir=".", require_top=None, tag=None, token=None,

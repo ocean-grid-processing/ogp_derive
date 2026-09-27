@@ -228,9 +228,9 @@ def test_as_published_takes_one_constituent_only():
         masks.as_published(LV, _default(), BATHY)
 
 
-def test_default_mask_by_level_kind():
-    assert masks.default(levels.identity("15_20")) == "as_published"
-    assert masks.default(LV) == "contiguous_from_top"
+def test_default_mask_is_contiguous_from_top():
+    assert masks.DEFAULT == "contiguous_from_top"
+    assert "as_published" in masks.REGISTRY                          # asked for by name, never defaulted
 
 
 def test_apply_as_published_area_no_volume_no_coverage(tmp_path):
