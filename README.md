@@ -86,7 +86,7 @@ docker container run -v $(pwd):/app ohc_derive:test pytest
 
 ### Run
 
-See `derive.slurm` for a real example of running this on blanca at CU. With the ensemble on (the default), each constituent's `<NAME>ENS_` sibling **must** sit next to its `<NAME>_` file or the loader exits, and every quantity gets a collapsed `_sd`. `--no-ensemble` is the central-only path (mean field, no `_sd`); central values are identical either way.
+See `examples/` for cluster launchers: `derive_ohc.slurm` (a synthetic level from the LocalGP plan, with a baseline window) and `derive_mld.slurm` (a single submission through the identity level). With the ensemble on (the default), each constituent's `<NAME>ENS_` sibling **must** sit next to its `<NAME>_` file or the loader exits, and every quantity gets a collapsed `_sd`. `--no-ensemble` is the central-only path (mean field, no `_sd`); central values are identical either way.
 
 #### run.py options
 
