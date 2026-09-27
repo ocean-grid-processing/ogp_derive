@@ -163,6 +163,10 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
     facts = {
         "level": level.name,
         "identity_level": level.identity,
+        "levels_file": getattr(cfg, "levels", None),
+        "level_plan": {"require_top": require_top,
+                       "contributors": [{"tag": c.tag, "n_fac": c.n_fac, "top": c.top, "bottom": c.bottom}
+                                        for c in level.contributors]},
         "quantities": cfg.quantities,
         "mask": cfg.mask,
         "require_top": require_top,

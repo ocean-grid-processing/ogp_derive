@@ -1,8 +1,11 @@
-"""The synthetic-level plan: the combined-level table, and the identity level.
+"""The synthetic-level plan: a table of combined levels read from a file, and the identity level.
 
 A synthetic level is a weighted sum of native ME4OH levels ("constituents"), shallowest first. `n_fac`
 scales a thin measured layer up to the slab it stands in for; `top`/`bottom` are the constituent's own
-dbar bounds, used against the standard bathy for the fully-wet / seafloor / dry test in step 2.
+dbar bounds, used against the standard bathy for the fully-wet / seafloor / dry test in step 2. The
+table comes from a TOML plan (`--levels`; LocalGP's is levels/localgp.toml), so a group whose native
+layers decompose the target layers differently writes its own plan and no code changes. `load`
+validates each level: the plan must tile its layer.
 
 A level is a plan for combining constituents, and one constituent needs no plan: with no `--level`
 and exactly one submission in the pool, `resolve` builds the **identity level** — that submission's
@@ -43,26 +46,68 @@ class Level:
         return sum(c.n_fac * (c.bottom - c.top) for c in self.contributors)
 
 
-LEVELS = [
-    Level("0_300",  (Contributor("15_20", 3, 15, 20), Contributor("15_300", 1, 15, 300)), 300),
-    Level("0_700",  (Contributor("15_20", 3, 15, 20), Contributor("15_300", 1, 15, 300),
-                     Contributor("300_700", 1, 300, 700)), 300),
-    Level("0_1000", (Contributor("15_20", 3, 15, 20), Contributor("15_300", 1, 15, 300),
-                     Contributor("300_700", 1, 300, 700), Contributor("700_1000", 1, 700, 1000)), 300),
-    Level("700_2000", (Contributor("700_1850", 1, 700, 1850), Contributor("1800_1850", 3, 1800, 1850)), 300),
-    Level("0_2000", (Contributor("15_20", 3, 15, 20), Contributor("15_300", 1, 15, 300),
-                     Contributor("300_700", 1, 300, 700), Contributor("700_1850", 1, 700, 1850),
-                     Contributor("1800_1850", 3, 1800, 1850)), 300),
-]
+def load(path):
+    """Read a level plan (TOML, `[[level]]` tables — see levels/localgp.toml) -> {name: Level}.
 
-_BY_NAME = {lv.name: lv for lv in LEVELS}
+    Each level is checked as it is read, because a plan that doesn't tile its layer would combine
+    silently into the wrong number: contributors listed shallowest first (tops non-decreasing), unique
+    tags, the n_fac-weighted thicknesses summing to the level's thickness (high - low), and
+    `require_top` positive and no more than that thickness.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError:                                 # Python < 3.11
+        import tomli as tomllib
+    with open(path, "rb") as f:
+        doc = tomllib.load(f)
+    table = {}
+    for entry in doc.get("level", []):
+        try:
+            name = entry["name"]
+            contributors = tuple(Contributor(c["tag"], int(c["n_fac"]), int(c["top"]), int(c["bottom"]))
+                                 for c in entry["contributors"])
+            level = Level(name, contributors, int(entry["require_top"]))
+        except (KeyError, TypeError, ValueError) as e:
+            raise SystemExit("%s: malformed level entry %r (%s)" % (path, entry.get("name"), e))
+        _validate(level, path)
+        if name in table:
+            raise SystemExit("%s: level %r is defined twice" % (path, name))
+        table[name] = level
+    if not table:
+        raise SystemExit("%s: no [[level]] entries" % path)
+    return table
 
 
-def get(name):
-    """The Level for `name`."""
-    if name not in _BY_NAME:
-        raise SystemExit("unknown synthetic level %r; known: %s" % (name, list(_BY_NAME)))
-    return _BY_NAME[name]
+def _validate(level, path):
+    where = "%s: level %s" % (path, level.name)
+    try:
+        low, high = level.low, level.high
+    except (ValueError, IndexError):
+        raise SystemExit("%s: name must be `<low>_<high>` in metres" % where)
+    if not level.contributors:
+        raise SystemExit("%s: no contributors" % where)
+    tags = [c.tag for c in level.contributors]
+    if len(set(tags)) != len(tags):
+        raise SystemExit("%s: a contributor tag appears twice (%s)" % (where, tags))
+    tops = [c.top for c in level.contributors]
+    if tops != sorted(tops):
+        raise SystemExit("%s: contributors must be listed shallowest first (tops %s)" % (where, tops))
+    for c in level.contributors:
+        if c.bottom <= c.top or c.n_fac < 1:
+            raise SystemExit("%s: contributor %s needs bottom > top and n_fac >= 1" % (where, c.tag))
+    if level.nominal_thickness != high - low:
+        raise SystemExit("%s: the n_fac-weighted constituent thicknesses sum to %d m, but the level is %d m "
+                         "thick; the plan must tile its layer"
+                         % (where, level.nominal_thickness, high - low))
+    if not 0 < level.require_top <= high - low:
+        raise SystemExit("%s: require_top must be in (0, %d]" % (where, high - low))
+
+
+def get(name, table):
+    """The Level for `name` in a loaded plan."""
+    if name not in table:
+        raise SystemExit("unknown synthetic level %r; the plan defines: %s" % (name, sorted(table)))
+    return table[name]
 
 
 def identity(tag):
@@ -72,11 +117,15 @@ def identity(tag):
     return Level(tag, (Contributor(tag, 1, top, bottom),), bottom - top, identity=True)
 
 
-def resolve(name, submissions):
-    """`--level` given -> the table level. Not given -> the identity level of the one submission in
-    the pool; with any other number of submissions there is nothing to build, and that's an error."""
+def resolve(name, submissions, table=None):
+    """`--level` given -> that level from the loaded plan (`table`, required). Not given -> the identity
+    level of the one submission in the pool; with any other number of submissions there is nothing to
+    build, and that's an error."""
     if name is not None:
-        return get(name)
+        if table is None:
+            raise SystemExit("--level %s names a synthetic level, which needs a plan: pass --levels <file> "
+                             "(the LocalGP plan is levels/localgp.toml)" % name)
+        return get(name, table)
     tags = sorted(submissions)
     if len(tags) != 1:
         raise SystemExit("--level is required unless the pool holds exactly one submission (the identity "

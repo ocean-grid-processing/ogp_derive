@@ -23,6 +23,24 @@ OHC_QUANTITY = {"name": "ohc", "kind": "extensive", "units": "J/m2", "long_name"
                 "publish_unit_factor": 1e12, "publish_units": "TJ/m^2"}
 
 
+LOCALGP_LEVELS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "levels", "localgp.toml")
+_TABLE = None
+
+
+def table():
+    """The LocalGP level plan, loaded once."""
+    global _TABLE
+    if _TABLE is None:
+        import levels
+        _TABLE = levels.load(LOCALGP_LEVELS)
+    return _TABLE
+
+
+def level(name):
+    return table()[name]
+
+
 def months(n, start_year=2001):
     """A monthly datetime axis of length n, starting in January of start_year."""
     return pd.date_range("%d-01-01" % start_year, periods=n, freq="MS")

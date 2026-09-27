@@ -13,7 +13,7 @@ import levels
 import grid
 import conftest
 
-LV = levels.get("0_700")
+LV = conftest.level("0_700")
 BATHY = conftest.bathy([[1000.0, 500.0, 100.0],
                         [1000.0, 1000.0, 1000.0]])
 
@@ -98,7 +98,7 @@ def test_contiguous_deep_gap_truncates_the_column():
 
 def test_contiguous_discards_defined_layers_below_a_gap():
     # 0_2000: gap in 300_700 at (0,0); 700_1850 and 1800_1850 are defined but below it -> discarded
-    lv = levels.get("0_2000")
+    lv = conftest.level("0_2000")
     cons5 = [conftest.constituent("15_20", 3, 15, 20, conftest.const_field(1.0)),
              conftest.constituent("15_300", 1, 15, 300, conftest.const_field(10.0)),
              conftest.constituent("300_700", 1, 300, 700, conftest.const_field(100.0, nan_cells=[(0, 0)])),
@@ -113,7 +113,7 @@ def test_contiguous_discards_defined_layers_below_a_gap():
 
 def test_contiguous_works_for_a_non_surface_layer():
     # 700_2000: require_top is a thickness from the 700 dbar top, so 300 requires 700-1000 -> 700_1850
-    lv = levels.get("700_2000")
+    lv = conftest.level("700_2000")
     cons2 = [conftest.constituent("700_1850", 1, 700, 1850, conftest.const_field(50.0)),
              conftest.constituent("1800_1850", 3, 1800, 1850, conftest.const_field(70.0))]
     _, footprint, height = masks.contiguous_from_top(lv, cons2, BATHY, require_top=300)
@@ -124,7 +124,7 @@ def test_contiguous_works_for_a_non_surface_layer():
 def test_700_2000_requires_its_shallowest_constituent():
     # require_depth 1000 falls within 700_1850's bounds (700-1850), so it's required. 700_1850 is a
     # single integrated value per cell, so "required" just means that value must be present (not NaN).
-    lv = levels.get("700_2000")
+    lv = conftest.level("700_2000")
     cons2 = [conftest.constituent("700_1850", 1, 700, 1850, conftest.const_field(50.0, nan_cells=[(0, 0)])),
              conftest.constituent("1800_1850", 3, 1800, 1850, conftest.const_field(70.0))]
     _, footprint, _ = masks.contiguous_from_top(lv, cons2, BATHY, require_top=300)
@@ -143,7 +143,7 @@ def _cons5(nan_1520=(), nan_15300=(), nan_300700=()):
 def test_require_top_past_a_constituent_top_pulls_it_into_the_required_set():
     # 0_2000, 300_700 gap at (0,0). require_top 301 crosses the 300 dbar top -> 300_700 becomes required
     # -> the cell drops; require_top 300 stops just above it -> the cell survives (truncated).
-    lv, cons5 = levels.get("0_2000"), _cons5(nan_300700=[(0, 0)])
+    lv, cons5 = conftest.level("0_2000"), _cons5(nan_300700=[(0, 0)])
     _, fp_301, _ = masks.contiguous_from_top(lv, cons5, BATHY, require_top=301)
     assert not bool(fp_301.isel(lat=0, lon=0))
     _, fp_300, _ = masks.contiguous_from_top(lv, _cons5(nan_300700=[(0, 0)]), BATHY, require_top=300)
@@ -153,7 +153,7 @@ def test_require_top_past_a_constituent_top_pulls_it_into_the_required_set():
 def test_require_top_inside_the_surface_zone_requires_only_the_top_constituent():
     # require_top 1 m is above the shallowest measured top (15) but the n_fac surface reaches level.low,
     # so only 15_20 is required: a 15_20 gap drops the cell, a 15_300 gap does not.
-    lv = levels.get("0_2000")
+    lv = conftest.level("0_2000")
     _, fp, _ = masks.contiguous_from_top(lv, _cons5(nan_1520=[(0, 0)], nan_15300=[(0, 1)]),
                                          BATHY, require_top=1)
     assert not bool(fp.isel(lat=0, lon=0))                          # 15_20 (the surface) required
@@ -163,7 +163,7 @@ def test_require_top_inside_the_surface_zone_requires_only_the_top_constituent()
 def test_require_top_in_the_deep_nfac_zone_requires_the_deepest_constituent():
     # 1851 m lands in 1800_1850's n_fac zone (1850-2000); its top 1800 < 1851 so it is required, and a
     # gap in it drops the cell. 1800 (just above its top) stops short, so the cell survives truncated.
-    lv = levels.get("0_2000")
+    lv = conftest.level("0_2000")
 
     def deep_gap():
         return [conftest.constituent("15_20", 3, 15, 20, conftest.const_field(1.0)),
@@ -264,7 +264,7 @@ def test_apply_contiguous_area_and_tapered_volume(tmp_path):
 
 def test_apply_writes_coverage_diagnostics(tmp_path):
     # 0_2000: 300_700 gap at (0,0) truncates the column to 300 m; (0,1) keeps the full 2000 m.
-    lv = levels.get("0_2000")
+    lv = conftest.level("0_2000")
     cons5 = _cons5(nan_300700=[(0, 0)])
     bathy = conftest.bathy([[2500.0, 3000.0, 3000.0], [3000.0, 3000.0, 3000.0]])
     masks.apply("contiguous_from_top", lv, cons5, bathy, out_dir=str(tmp_path), require_top=300, tag="dev")
@@ -281,7 +281,7 @@ def test_apply_writes_coverage_diagnostics(tmp_path):
 def test_apply_coverage_carries_publication_meta(tmp_path):
     # product_name/author append to the aux filenames (last before the extension); citation lands as a
     # top-level attr on the coverage .nc.
-    lv = levels.get("0_2000")
+    lv = conftest.level("0_2000")
     cons5 = _cons5(nan_300700=[(0, 0)])
     bathy = conftest.bathy([[2500.0, 3000.0, 3000.0], [3000.0, 3000.0, 3000.0]])
     masks.apply("contiguous_from_top", lv, cons5, bathy, out_dir=str(tmp_path), require_top=300,

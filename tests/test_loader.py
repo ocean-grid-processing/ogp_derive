@@ -115,7 +115,7 @@ def test_write_blob_round_trip(tmp_path):
     cfg = types.SimpleNamespace(out=str(tmp_path), tag="TESTTAG", provenance_link="http://prov",
                                 time_window=(2005, 2024))
     blob = xr.Dataset({"ohca": ("year", [1.0, 2.0])}, coords={"year": [2001, 2002]})
-    path = loader.write_blob(blob, levels.get("0_300"), cfg)
+    path = loader.write_blob(blob, conftest.level("0_300"), cfg)
     back = xr.open_dataset(path)
     assert back.attrs["level"] == "0_300"
     assert back.attrs["time_window"] == "2005-2024"
@@ -126,5 +126,5 @@ def test_write_blob_round_trip(tmp_path):
 def test_write_blob_window_all_when_none(tmp_path):
     cfg = types.SimpleNamespace(out=str(tmp_path), tag="T", provenance_link=None, time_window=None)
     blob = xr.Dataset({"ohca": ("year", [1.0])}, coords={"year": [2001]})
-    back = xr.open_dataset(loader.write_blob(blob, levels.get("0_300"), cfg))
+    back = xr.open_dataset(loader.write_blob(blob, conftest.level("0_300"), cfg))
     assert back.attrs["time_window"] == "all"

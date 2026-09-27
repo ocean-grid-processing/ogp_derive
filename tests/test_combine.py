@@ -47,19 +47,19 @@ def _maybe(x):
 
 def test_nfac_sum_value_is_linear_and_sd_is_worst_case():
     per = _per(2.0, 0.5, 7.0, 2.0)
-    contribs = levels.get("0_300").contributors                    # 15_20 x3, 15_300 x1
+    contribs = conftest.level("0_300").contributors                    # 15_20 x3, 15_300 x1
     assert np.isclose(float(combine._nfac_sum(per, contribs, "ohca", "value")), 3 * 2 + 7)      # 13
     assert np.isclose(float(combine._nfac_sum(per, contribs, "ohca", "sd")), 3 * 0.5 + 2)       # 3.5
 
 
 def test_nfac_sum_none_when_a_part_is_none():
     per = _per(2.0, None, 7.0, None)
-    contribs = levels.get("0_300").contributors
+    contribs = conftest.level("0_300").contributors
     assert combine._nfac_sum(per, contribs, "ohca", "sd") is None
 
 
 def test_combine_synthetic_builds_dataset_and_stamps_geometry():
-    blob = combine.combine_synthetic(_per(2.0, 0.5, 7.0, 2.0), levels.get("0_300"),
+    blob = combine.combine_synthetic(_per(2.0, 0.5, 7.0, 2.0), conftest.level("0_300"),
                                      area_m2=1000.0, volume_m3=250000.0,
                                      quantity=conftest.OHC_QUANTITY)
     assert np.isclose(float(blob["ohca"]), 13.0)
@@ -72,7 +72,7 @@ def test_combine_synthetic_builds_dataset_and_stamps_geometry():
 
 
 def test_combine_synthetic_mean_only_omits_sd():
-    blob = combine.combine_synthetic(_per(2.0, None, 7.0, None), levels.get("0_300"), 1000.0, 250000.0, {})
+    blob = combine.combine_synthetic(_per(2.0, None, 7.0, None), conftest.level("0_300"), 1000.0, 250000.0, {})
     assert "ohca" in blob.data_vars and "ohca_sd" not in blob.data_vars
 
 
@@ -80,7 +80,7 @@ def test_combine_carries_quantity_attrs():
     # a trend's `per` attr must survive the n_fac fold so packaging can read it off the blob
     per = {"15_20": {"ohca_trend": {"value": xr.DataArray(2.0, attrs={"per": "year"}), "sd": None}},
            "15_300": {"ohca_trend": {"value": xr.DataArray(7.0, attrs={"per": "year"}), "sd": None}}}
-    blob = combine.combine_synthetic(per, levels.get("0_300"), 1000.0, 250000.0, {})
+    blob = combine.combine_synthetic(per, conftest.level("0_300"), 1000.0, 250000.0, {})
     assert blob["ohca_trend"].attrs["per"] == "year"
 
 
@@ -105,7 +105,7 @@ def test_gridded_combine_uses_union_footprint():
     # cell [1,0]: shallow not kept, deep kept -> 1*4 = 4; cell [1,1]: both absent -> NaN
     per = _per_grid([[1.0, 1.0], [np.nan, np.nan]],
                     [[2.0, np.nan], [4.0, np.nan]])
-    contribs = levels.get("0_300").contributors                    # 15_20 x3, 15_300 x1
+    contribs = conftest.level("0_300").contributors                    # 15_20 x3, 15_300 x1
     out = combine._nfac_sum(per, contribs, "map", "value")
     assert np.allclose(out.values[0], [5.0, 3.0])                  # missing constituent contributes 0
     assert np.isclose(out.values[1, 0], 4.0)
@@ -116,7 +116,7 @@ def test_series_combine_still_propagates_deliberate_nan():
     # a non-gridded quantity keeps the plain sum, so a deliberate NaN (e.g. OHU's first year) survives
     per = {"15_20": {"ohu": {"value": xr.DataArray([np.nan, 2.0], dims=("year",)), "sd": None}},
            "15_300": {"ohu": {"value": xr.DataArray([np.nan, 7.0], dims=("year",)), "sd": None}}}
-    contribs = levels.get("0_300").contributors
+    contribs = conftest.level("0_300").contributors
     out = combine._nfac_sum(per, contribs, "ohu", "value")
     assert np.isnan(out.values[0])                               # not scrubbed to 0
     assert np.isclose(out.values[1], 3 * 2.0 + 7.0)

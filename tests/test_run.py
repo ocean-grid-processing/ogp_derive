@@ -49,7 +49,7 @@ def test_parse_window():
 def test_quantity_is_shared_across_constituents():
     q = conftest.OHC_QUANTITY
     subs = {"15_20": {"quantity": q}, "15_300": {"quantity": dict(q)}}
-    assert run._quantity(subs, levels.get("0_300")) == q
+    assert run._quantity(subs, conftest.level("0_300")) == q
 
 
 def _kind(kind):
@@ -58,8 +58,8 @@ def _kind(kind):
 
 def test_check_kind_accepts_the_ohc_plan():
     run.check_kind(_kind("extensive"), ["ohca", "ohu", "ohca_trend", "ohu_trend", "map"],
-                   "contiguous_from_top", levels.get("0_2000"))
-    run.check_kind(_kind("extensive"), ["ohca"], "fully_wet_nan", levels.get("0_300"))
+                   "contiguous_from_top", conftest.level("0_2000"))
+    run.check_kind(_kind("extensive"), ["ohca"], "fully_wet_nan", conftest.level("0_300"))
 
 
 def test_check_kind_refuses_integral_quantities_for_an_intensive_field():
@@ -78,19 +78,19 @@ def test_check_kind_refuses_zero_fill_mask_and_multi_constituent_for_intensive()
         run.check_kind(_kind("intensive"), ["map"], "fully_wet_nan", one)
     assert "fully_wet_nan" in str(e.value)
     with pytest.raises(SystemExit) as e:
-        run.check_kind(_kind("intensive"), ["map"], "contiguous_from_top", levels.get("0_300"))
+        run.check_kind(_kind("intensive"), ["map"], "contiguous_from_top", conftest.level("0_300"))
     assert "thickness-weighted" in str(e.value)
 
 
 def test_check_kind_rejects_unknown_names_and_kinds():
     import pytest
     with pytest.raises(SystemExit):
-        run.check_kind(_kind("extensive"), ["bogus"], "contiguous_from_top", levels.get("0_300"))
+        run.check_kind(_kind("extensive"), ["bogus"], "contiguous_from_top", conftest.level("0_300"))
     with pytest.raises(SystemExit):
-        run.check_kind(_kind("extensive"), ["ohca"], "bogus", levels.get("0_300"))
+        run.check_kind(_kind("extensive"), ["ohca"], "bogus", conftest.level("0_300"))
     with pytest.raises(SystemExit):
         run.check_kind(dict(conftest.OHC_QUANTITY, kind="sideways"), ["ohca"], "contiguous_from_top",
-                       levels.get("0_300"))
+                       conftest.level("0_300"))
 
 
 def test_run_level_identity_field_returns_the_input_and_its_spread(tmp_path):
@@ -118,7 +118,7 @@ def test_quantity_disagreement_is_an_error():
     other = dict(conftest.OHC_QUANTITY, name="mld")
     subs = {"15_20": {"quantity": conftest.OHC_QUANTITY}, "15_300": {"quantity": other}}
     with pytest.raises(SystemExit):
-        run._quantity(subs, levels.get("0_300"))
+        run._quantity(subs, conftest.level("0_300"))
 
 
 def _ramped(slope, n_time=24):
@@ -141,7 +141,7 @@ def test_run_level_ohca_matches_hand_computed(tmp_path):
     cfg = types.SimpleNamespace(mask="fully_wet_nan", quantities=["ohca"], time_window=None,
                                 require_top=None, tag="dev", out=str(tmp_path))
 
-    blob = run.run_level(levels.get("0_300"), subs, reference_bathy, cfg)
+    blob = run.run_level(conftest.level("0_300"), subs, reference_bathy, cfg)
 
     A = float(grid.cell_area(conftest.LAT, conftest.LON).sum())
     assert np.allclose(blob["ohca"].values, [-30.0 * A, 30.0 * A])
@@ -160,7 +160,7 @@ def test_run_level_with_members_produces_sd_and_geometry(tmp_path):
     reference_bathy = conftest.bathy([[1000.0, 1000.0, 1000.0], [1000.0, 1000.0, 1000.0]])
     cfg = types.SimpleNamespace(mask="fully_wet_nan", quantities=["ohca"], time_window=None,
                                 require_top=None, tag="dev", out=str(tmp_path))
-    blob = run.run_level(levels.get("0_300"), subs, reference_bathy, cfg)
+    blob = run.run_level(conftest.level("0_300"), subs, reference_bathy, cfg)
     A = float(grid.cell_area(conftest.LAT, conftest.LON).sum())
     assert "ohca" in blob.data_vars and "ohca_sd" in blob.data_vars
     for v in ("ohca", "ohca_sd"):                                    # metadata rides through the combine

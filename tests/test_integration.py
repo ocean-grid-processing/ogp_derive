@@ -62,7 +62,7 @@ def test_windowed_ohca_and_trend(tmp_path):
         "15_20": {"field_value": ramp(1.0, 36), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY},
         "15_300": {"field_value": conftest.const_field(0.0, n_time=36), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY},
     }
-    blob = run.run_level(levels.get("0_300"), subs, DEEP,
+    blob = run.run_level(conftest.level("0_300"), subs, DEEP,
                          cfg(["ohca", "ohca_trend"], (2002, 2003), str(tmp_path)))
     a = A()
     assert np.allclose(blob["ohca"].values, [-54 * a, -18 * a, 18 * a])
@@ -77,7 +77,7 @@ def test_dry_and_excluded_cells_through_the_full_pipeline(tmp_path):
         "300_700": {"field_value": ramp(1.0, 12), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY},
     }
     bathy = conftest.bathy([[3000.0, 100.0, 3000.0], [3000.0, 3000.0, 3000.0]])
-    blob = run.run_level(levels.get("0_700"), subs, bathy, cfg(["map"], None, str(tmp_path)))
+    blob = run.run_level(conftest.level("0_700"), subs, bathy, cfg(["map"], None, str(tmp_path)))
     anom = np.arange(12.0) - 5.5
     assert np.allclose(blob["map"].isel(lat=0, lon=0).values, 5 * anom)    # 3 + 1 + 1 all contribute
     assert np.allclose(blob["map"].isel(lat=0, lon=1).values, 4 * anom)    # 300_700 dry -> dropped
@@ -95,7 +95,7 @@ def test_ohu_voids_leading_year_and_trend_skips_it(tmp_path):
 
     subs = {"15_20": {"field_value": sq(), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY},
             "15_300": {"field_value": sq(), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY}}
-    blob = run.run_level(levels.get("0_300"), subs, DEEP, cfg(["ohu", "ohu_trend"], None, str(tmp_path)))
+    blob = run.run_level(conftest.level("0_300"), subs, DEEP, cfg(["ohu", "ohu_trend"], None, str(tmp_path)))
     a = A()
     assert np.isnan(blob["ohu"].values[0])
     assert np.allclose(blob["ohu"].values[1:], [136 * a, 232 * a])
@@ -112,7 +112,7 @@ def test_contiguous_from_top_tapers_the_volume(tmp_path):
                     "attrs": attrs(), "quantity": conftest.OHC_QUANTITY},
     }
     # require_top is left to the level (0_700 -> 300); no flag override
-    blob = run.run_level(levels.get("0_700"), subs, DEEP,
+    blob = run.run_level(conftest.level("0_700"), subs, DEEP,
                          cfg(["ohca"], None, str(tmp_path), mask="contiguous_from_top"))
     a = A()
     cell = float(grid.cell_area(conftest.LAT, conftest.LON).isel(lat=0, lon=1))
@@ -121,7 +121,7 @@ def test_contiguous_from_top_tapers_the_volume(tmp_path):
 
 
 def test_0_2000_five_constituent_combine(tmp_path):
-    lv = levels.get("0_2000")                                              # sum(n_fac) = 9
+    lv = conftest.level("0_2000")                                              # sum(n_fac) = 9
     subs = {c.tag: {"field_value": ramp(1.0, 24), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY} for c in lv.contributors}
     blob = run.run_level(lv, subs, DEEP, cfg(["ohca"], None, str(tmp_path)))
     a = A()
@@ -130,7 +130,7 @@ def test_0_2000_five_constituent_combine(tmp_path):
 
 
 def test_700_2000_combine(tmp_path):
-    lv = levels.get("700_2000")                                            # sum(n_fac) = 4
+    lv = conftest.level("700_2000")                                            # sum(n_fac) = 4
     subs = {c.tag: {"field_value": ramp(1.0, 24), "attrs": attrs(), "quantity": conftest.OHC_QUANTITY} for c in lv.contributors}
     blob = run.run_level(lv, subs, DEEP, cfg(["ohca"], None, str(tmp_path)))
     a = A()

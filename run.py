@@ -42,8 +42,10 @@ def run(cfg):
                                           contract=cfg.contract)
     reference_bathy = loader.load_bathy(cfg.bathy)
 
-    # the plan: a table level, or the identity level of a lone submission when --level is omitted.
-    level = levels.resolve(cfg.level, submissions)
+    # the plan: a level from the --levels file, or the identity level of a lone submission when --level
+    # is omitted (a single constituent needs no plan).
+    table = levels.load(cfg.levels) if cfg.levels else None
+    level = levels.resolve(cfg.level, submissions, table)
 
     token = loader.file_token(cfg, submissions)                    # shared by the .nc and the auxiliaries
     blob = run_level(level, submissions, reference_bathy, cfg, token)
@@ -131,8 +133,10 @@ def main():
     ap = argparse.ArgumentParser(description="ohc_derive factory: ME4OH submissions -> one combined level")
     ap.add_argument("submissions", nargs="+", help="the constituent OHC_ submissions (+ OHCENS_ siblings)")
     ap.add_argument("--level", default=None,
-                    help="the synthetic level to build (e.g. 0_700). Omit with exactly one submission "
-                         "to build its identity level (that native tag, unchanged)")
+                    help="the synthetic level to build (e.g. 0_700), from the --levels plan. Omit with "
+                         "exactly one submission to build its identity level (that native tag, unchanged)")
+    ap.add_argument("--levels", default=None,
+                    help="the level plan (TOML; see levels/localgp.toml). Required with --level")
     ap.add_argument("--bathy", required=True, help="standard bathymetry (NetCDF on the common grid)")
     ap.add_argument("--quantities", required=True,
                     help="comma list of deliverables to build (see temporal_transforms.REGISTRY)")
