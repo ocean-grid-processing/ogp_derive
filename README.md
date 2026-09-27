@@ -1,10 +1,25 @@
 # ohc_derive
 
-`ohc_derive` builds combined-level ("synthetic-level") ocean-heat-content analysis quantities — OHCA, OHU, their trends, and gridded anomaly maps — from native-level ME4OH submissions and a standard bathymetry, writing one NetCDF per synthetic level. It works from the ME4OH-shaped submissions the ingest `publish` step writes (any quantity, carrying the `quantity` attr) plus a standard bathy.
+`ohc_derive` builds combined-level ("synthetic-level") ocean-heat-content analysis quantities — OHCA, OHU, their trends, and gridded anomaly maps — from native-level ME4OH submissions and a standard bathymetry, writing one NetCDF per synthetic level. It works from the ME4OH-shaped submissions the ingest `publish` step writes (any quantity), or from any group's bare ME4OH-protocol files with `--contract ME4OH`, plus a standard bathy.
 
 ## What it computes
 
-**Inputs** are the native-level submission NetCDFs that make up a synthetic level — its *constituents* — plus a standard bathymetry on the common grid. Each submission is the posterior-mean field written by the ingest `publish` step, named `<NAME>_…` after its quantity (`OHC_` for ocean heat content); its `<NAME>ENS_` sibling alongside holds the per-member ensemble, and the loader resolves it from the `quantity` attr the submission carries. `cell_area` is regenerated from the grid.
+**Inputs** are the native-level submission NetCDFs that make up a synthetic level — its *constituents* — plus a standard bathymetry on the common grid. A submission is an ME4OH-shaped file: `DATA(LONGITUDE, LATITUDE, TIME)` on the common 1° grid, monthly, missing as NaN. `cell_area` is regenerated from the grid.
+
+### What a submission must carry
+
+On top of the ME4OH protocol itself, derive reads four things from a submission:
+
+| what | where | used for |
+|---|---|---|
+| the **quantity table** | `quantity` attr (the ingest `[quantity]` table as compact JSON: `name`, `kind`, `units`, `scale_terms`, published units) | what the field is, its kind (extensive/intensive), its units; `cp0`/`rho0` for the gcos emitter |
+| the **native-level tag** | `mapped_layer` attr, `<top>_<bottom>` | keying the constituent the level plan asks for |
+| the **ensemble** | a `<NAME>ENS_…` sibling file, `DATA(MEMBER, LONGITUDE, LATITUDE, TIME)`, found by swapping the `<NAME>_` filename prefix from `quantity.name` | the `_sd` companions |
+| the **provenance chain** | `*_run_config` / `*_run_facts` / `*_code_version` attrs | rolled forward into the blob (optional — absent blocks are simply not forwarded) |
+
+**Files from the LocalGP ingest stage carry all of this.** `ohc_ingest`'s `publish.py` stamps the `quantity` table, `mapped_layer` and the provenance blocks, and writes the `<NAME>ENS_` sibling with `--ensemble`; nothing further is needed, and this is the default.
+
+**Files that stop at the ME4OH protocol — other groups' submissions — carry none of it, and don't have to.** Pass `--contract ME4OH` and derive fills the gaps from the protocol, which fixes them: `DATA` is ocean heat content density in TJ/m² computed with the protocol's `cp0 = 3989.244 J/kg/K` and `rho0 = 1030 kg/m³` (so the quantity table is the protocol's OHC table); the layer is the filename's `lev<low>_<high>` token; there is no ensemble, so the run is mean-only (a `DATA_SD`, if present, is not used). Everything inferred is recorded on the blob in `ohc_derive_run_facts.inferred_config`, keyed by constituent, so the record says the table came from the specification and not from the file. Under the contract the identity level's default mask is `contiguous_from_top` rather than `as_published`: the footprint was never derive's to have enforced upstream, so derive coordinates it itself (a cell is kept where the field is defined at every time step). A bare protocol file passed *without* `--contract` is refused with a message saying so — derive never infers silently. The table in [`contracts.py`](contracts.py) is the one place the protocol's assumptions live.
 
 A **synthetic level** is an `n_fac`-weighted sum of native ME4OH levels, shallowest first — for example `0_2000` is `15_20`(×3) + `15_300` + `300_700` + `700_1850` + `1800_1850`(×3). `n_fac` scales a thin measured layer up to the slab it stands in for; each constituent carries its own dbar `top`/`bottom`, used against the bathy in the mask. The level table lives in [`levels.py`](levels.py) (`levels.LEVELS`): `0_300`, `0_700`, `0_1000`, `700_2000`, `0_2000`.
 
@@ -79,7 +94,7 @@ All configuration is on the command line — no env, no config file. The availab
 
 | option | default | effect |
 |---|---|---|
-| `SUBMISSION.nc …` (positional) | *(required)* | the constituent submissions (`<NAME>_…`); the `<NAME>ENS_` member siblings are found automatically. Each level selects the native constituents it needs by tag, so you can pass the whole pool of submissions and let each run pick — but the pool must hold **exactly one file per native level** (a duplicate tag, e.g. a stray window/experiment/rerun, is a hard error, not a silent last-wins). |
+| `SUBMISSION.nc …` (positional) | *(required)* | the constituent submissions (`<NAME>_…`, or bare ME4OH files with `--contract ME4OH`); the `<NAME>ENS_` member siblings are found automatically. Each level selects the native constituents it needs by tag, so you can pass the whole pool of submissions and let each run pick — but the pool must hold **exactly one file per native level** (a duplicate tag, e.g. a stray window/experiment/rerun, is a hard error, not a silent last-wins). |
 | `--level` | *(none)* | the synthetic level to build (`levels.LEVELS`), e.g. `0_2000`. Omitted with exactly one submission: that submission's identity level. Omitted with any other number of submissions: an error. |
 | `--bathy` | *(required)* | standard bathymetry NetCDF on the common grid. |
 | `--quantities` | *(required)* | comma list from `ohca,ohu,ohca_trend,ohu_trend,map,field`. Unknown names error. |
@@ -87,6 +102,7 @@ All configuration is on the command line — no env, no config file. The availab
 | `--require-top` | *(the level's own)* | metres of the layer's own top (from `level.low`) that must be defined for a cell to survive; overrides the level's `require_top` (in `levels.py`). Used by `contiguous_from_top`, ignored by `fully_wet_nan`. |
 | `--time-window` | *(all years)* | `YEAR0:YEAR1` — the anomaly baseline and the trend-fit years. Separator `:`, `-`, or `_`, so the filename token `2004_2025` works verbatim. |
 | `--no-ensemble` | off (ensemble **on**) | mean field only — skip the `_sd` companions and do not read the `<NAME>ENS_` siblings. |
+| `--contract` | *(none)* | `ME4OH`: the submissions are bare protocol files (another group's); infer the quantity table, the layer (from the filename) and mean-only from the protocol, and record it as `inferred_config`. Omit for files from the ingest `publish` step, which carry everything. |
 | `--tag` | *(required)* | provenance tag: the **run token** in the filename (`derive_<tag>_<data>_tw<baseline>_<level>.nc`) **and** the `provenance_tag` header attr. Whitespace-stripped, never lowercased — must match the provenance record char-for-char. |
 | `--provenance-link` | *(none)* | URL/path to the provenance record; written to the `provenance_link` header attr. |
 | `--code-version` | *(required)* | URL to the exact ohc_derive code (commit/release); written to the `ohc_derive_code_version` header attr. |

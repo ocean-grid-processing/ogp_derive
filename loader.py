@@ -18,6 +18,8 @@ import os
 import numpy as np
 import xarray as xr
 
+import contracts
+
 # This step's identity, used to namespace its provenance (`ohc_derive_run_config` / `_run_facts` /
 # `_code_version`). Every step rolls all `*_run_config` / `_run_facts` / `_code_version` forward and
 # adds its own; at a fan-in they're grouped by constituent, so blocks accrete without collision.
@@ -59,8 +61,8 @@ def _member_sibling(path, quantity_name):
 def _quantity(attrs, path):
     """The submission's `quantity` attr (the ingest [quantity] table, compact JSON) -> dict."""
     if "quantity" not in attrs:
-        raise SystemExit("%s has no `quantity` attr (expected a submission from the current publish)"
-                         % os.path.basename(path))
+        raise SystemExit("%s has no `quantity` attr (expected a submission from the ingest publish step; "
+                         "a bare ME4OH file needs --contract ME4OH)" % os.path.basename(path))
     return json.loads(attrs["quantity"])
 
 
@@ -84,9 +86,11 @@ def _stack(mean_da, member_da):
     return xr.concat([mean_r, members], dim="realization")
 
 
-def load_submissions(paths, with_members=True):
+def load_submissions(paths, with_members=True, contract=None):
     """paths -> {tag: {"field_value": DataArray(realization, time, lat, lon), "attrs": dict,
-    "quantity": dict}} — `quantity` is the ingest [quantity] table the submission carries.
+    "quantity": dict[, "inferred": dict]}} — `quantity` is the ingest [quantity] table the submission
+    carries, or, under a `contract` (see contracts.py), the table the contract implies; then `inferred`
+    records what was assumed and no members are loaded.
 
     Submissions are keyed by their native-level tag, and each level a synthetic level needs is selected
     by tag — so passing the whole pool and letting each run pick its constituents is fine. But that only
@@ -100,18 +104,25 @@ def load_submissions(paths, with_members=True):
         ds = xr.open_dataset(p, decode_times=True)
         if "DATA" not in ds.data_vars:
             raise SystemExit("%s has no DATA variable (expected an ME4OH submission)" % p)
-        tag = ds.attrs.get("mapped_layer") or ds.attrs.get("layer_m")
-        if not tag or "_" not in str(tag):
-            raise SystemExit("%s has no usable mapped_layer/layer_m attr (got %r)" % (p, tag))
-        tag = str(tag)
+        inferred = None
+        if contract is not None:
+            tag, quantity, inferred = contracts.infer(contract, p)
+        else:
+            tag = ds.attrs.get("mapped_layer") or ds.attrs.get("layer_m")
+            if not tag or "_" not in str(tag):
+                raise SystemExit("%s has no usable mapped_layer/layer_m attr (got %r); a bare ME4OH file "
+                                 "needs --contract ME4OH" % (p, tag))
+            tag = str(tag)
+            quantity = _quantity(ds.attrs, p)
         if tag in seen:
             raise SystemExit("two submissions map to native level %s:\n  %s\n  %s\n"
                              "the pool must hold exactly one file per native level." % (tag, seen[tag], p))
         seen[tag] = p
-        quantity = _quantity(ds.attrs, p)
         mean_da = _to_tlatlon(ds["DATA"]).astype("float64")
-        members = _load_members(p, quantity["name"]) if with_members else None
+        members = _load_members(p, quantity["name"]) if (with_members and inferred is None) else None
         subs[tag] = {"field_value": _stack(mean_da, members), "attrs": dict(ds.attrs), "quantity": quantity}
+        if inferred is not None:
+            subs[tag]["inferred"] = inferred
     return subs
 
 
@@ -148,7 +159,8 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
     require_top = cfg.require_top if cfg.require_top is not None else level.require_top
     blob.attrs["%s_code_version" % STAGE] = cfg.code_version
     blob.attrs["%s_run_config" % STAGE] = _compact(vars(cfg))
-    blob.attrs["%s_run_facts" % STAGE] = _compact({
+    inferred = {t: submissions[t]["inferred"] for t in contributors if "inferred" in submissions[t]}
+    facts = {
         "level": level.name,
         "identity_level": level.identity,
         "quantities": cfg.quantities,
@@ -161,7 +173,10 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
         "constituents": contributors,
         "n_fac": {c.tag: c.n_fac for c in level.contributors},
         "quantity": _maybe_json(blob.attrs.get("quantity")),
-    })
+    }
+    if inferred:
+        facts["inferred_config"] = inferred                       # what --contract filled in, per constituent
+    blob.attrs["%s_run_facts" % STAGE] = _compact(facts)
 
 
 def _record_span(blob):

@@ -180,10 +180,12 @@ KINDS = {
 }
 
 
-def default(level):
-    """The prescription a level gets when --mask is not given: the identity level takes publish's
-    mask as final; a table level coordinates its constituents from the top down."""
-    return "as_published" if level.identity else "contiguous_from_top"
+def default(level, contract=None):
+    """The prescription a level gets when --mask is not given. An identity level built from our own
+    publish output takes that mask as final (`as_published`, which verifies it is time-constant). Under an
+    input contract the footprint was never ours to enforce, so derive coordinates it itself: a table
+    level, or any level under a contract, gets `contiguous_from_top`."""
+    return "as_published" if (level.identity and contract is None) else "contiguous_from_top"
 
 
 def apply(name, level, constituents, reference_bathy, out_dir=".", require_top=None, tag=None, token=None,

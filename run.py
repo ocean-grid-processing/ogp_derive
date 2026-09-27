@@ -29,12 +29,17 @@ import masks
 import map_transforms
 import temporal_transforms
 import combine
+import contracts
 import loader
 
 
 def run(cfg):
-    # step 1 — load the constituents' submissions (mean + members) and the standard bathy.
-    submissions = loader.load_submissions(cfg.submissions, with_members=not cfg.no_ensemble)
+    # step 1 — load the constituents' submissions (mean + members) and the standard bathy. Under an input
+    # contract the submissions are bare protocol files: no members, quantity and layer inferred.
+    if cfg.contract is not None:
+        cfg.no_ensemble = True                                   # resolved here so provenance records it
+    submissions = loader.load_submissions(cfg.submissions, with_members=not cfg.no_ensemble,
+                                          contract=cfg.contract)
     reference_bathy = loader.load_bathy(cfg.bathy)
 
     # the plan: a table level, or the identity level of a lone submission when --level is omitted.
@@ -52,7 +57,7 @@ def run_level(level, submissions, reference_bathy, cfg, token=None):
     constituents = levels.constituents(level, submissions)          # the native levels this band needs
     quantity = _quantity(submissions, level)
     if cfg.mask is None:
-        cfg.mask = masks.default(level)                             # resolved here so provenance records it
+        cfg.mask = masks.default(level, getattr(cfg, "contract", None))   # resolved here so provenance records it
     check_kind(quantity, cfg.quantities, cfg.mask, level)            # the plan must suit the quantity's kind
 
     # step 2 — apply the cross-layer mask; dumps the mask png and returns the footprint area and volume.
@@ -141,6 +146,10 @@ def main():
                     help="YEAR0:YEAR1 baseline/trend window (default: all years); separator "
                          "`:`, `-`, or `_` (so the filename token 2004_2025 works too)")
     ap.add_argument("--no-ensemble", action="store_true", help="mean field only; no standard deviations")
+    ap.add_argument("--contract", default=None, choices=list(contracts.CONTRACTS),
+                    help="treat the submissions as bare protocol files and infer what derive needs from the "
+                         "protocol (ME4OH: OHC in TJ/m^2 with the protocol cp0/rho0, layer from the filename, "
+                         "no ensemble); recorded as inferred_config. Omit for ingest-published files.")
     ap.add_argument("--tag", required=True, help="provenance tag (filename token + provenance_tag attr)")
     ap.add_argument("--provenance-link", default=None, help="URL/path to the provenance record")
     ap.add_argument("--code-version", required=True,
