@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ohc_derive factory: build the combined-level analysis quantities for one synthetic level.
+"""ogp_derive factory: build the combined-level analysis quantities for one synthetic level.
 
 Consumes native-level ME4OH submissions (values and NaN on the common grid) plus a standard
 bathymetry, and works entirely on the common grid. One invocation handles one synthetic level, so
@@ -130,7 +130,7 @@ def _quantity(submissions, level):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="ohc_derive factory: ME4OH submissions -> one combined level")
+    ap = argparse.ArgumentParser(description="ogp_derive factory: ME4OH submissions -> one combined level")
     ap.add_argument("submissions", nargs="+", help="the constituent OHC_ submissions (+ OHCENS_ siblings)")
     ap.add_argument("--level", default=None,
                     help="the synthetic level to build (e.g. 0_700), from the --levels plan. Omit with "
@@ -157,7 +157,7 @@ def main():
     ap.add_argument("--tag", required=True, help="provenance tag (filename token + provenance_tag attr)")
     ap.add_argument("--provenance-link", default=None, help="URL/path to the provenance record")
     ap.add_argument("--code-version", required=True,
-                    help="URL to the exact ohc_derive code (commit/release); stamped as "
+                    help="URL to the exact ogp_derive code (commit/release); stamped as "
                          "ohc_derive_code_version")
     ap.add_argument("--product-name", required=True,
                     help="product name; trailing filename token on the published mask/coverage auxiliaries "

@@ -129,7 +129,7 @@ def load_submissions(paths, with_members=True, contract=None):
 def load_bathy(path):
     """The standard bathymetry (etopo60.cdf) -> DataArray(lat, lon), seafloor depth in metres.
 
-    This is the same file ohc_ingest pins the mapping grid to: relief variable ROSE (metres, negative
+    This is the same file localgp_ogp_ingest pins the mapping grid to: relief variable ROSE (metres, negative
     below sea level) on dims ETOPO60Y (latitude) and ETOPO60X (longitude), row-major [lat, lon]. We
     read it as-is, so lat/lon come out in the mapping-grid order the submissions also carry, and negate
     the relief to positive-down depth to match ingest's seabed convention.
