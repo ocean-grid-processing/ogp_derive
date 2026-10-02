@@ -9,14 +9,26 @@ short recipe over the small helpers below:
     ohca_trend   OLS slope of the annual integral over the window      -> (realization,)
     ohu_trend    OLS slope of the annual tendency over the window      -> (realization,)
     map          per-cell monthly anomaly (window baseline)            -> (realization, time, lat, lon)
+    field        the masked field itself, per cell and month             -> (realization, time, lat, lon)
 
 `_tendency` drops its leading step (no prior month), so `ohu` takes its annual mean with
 `complete=True` — a year missing that step is NaN, not a partial average — and `_slope` skips NaN
-years, keeping the dropped step out of the fit. Each trend carries a `per` attr naming its step
-("year"), so packaging divides by the matching seconds-per-step.
+years, keeping the dropped step out of the fit. Every rate carries a `per` attr naming the step it
+is a rate over — `ohu` "month" (the annual mean of a monthly difference is still per month), the
+trends "year" — so packaging divides by the matching seconds-per-step.
 
-Add a deliverable: write a recipe over the helpers and register it.
+Every deliverable is stamped with what it is made of, so packaging converts units from metadata:
+`field_units` (the submission's published units, from the `quantity` table) and `reduction` — the
+step-3 primitive the recipe draws on: `area_integral` (the field summed over the footprint's cell
+areas; units are field units x m2, and dividing by the level's `area_m2` recovers a per-area density)
+or `grid` (still per cell; units are the field units). `REGISTRY` maps each name to its recipe and
+its primitive.
+
+Add a deliverable: write a recipe over the helpers and register it with the primitive it uses.
 """
+
+# reduction attr value per step-3 primitive
+REDUCTION = {"integral": "area_integral", "map": "grid"}
 
 
 def _in_window(series, dim, window):
@@ -62,7 +74,7 @@ def ohca(primitives, window):
 
 
 def ohu(primitives, window):
-    return _annual(_tendency(primitives["integral"]), complete=True)
+    return _annual(_tendency(primitives["integral"]), complete=True).assign_attrs(per="month")
 
 
 def ohca_trend(primitives, window):
@@ -79,22 +91,37 @@ def gridded_anomaly(primitives, window):
     return _anomaly(primitives["map"], window)
 
 
+def field(primitives, window):
+    """The masked field as published, per cell and month — no transform, so the collapse yields the
+    per-cell mean and member spread. The window is unused."""
+    return primitives["map"]
+
+
+# name -> (recipe, the step-3 primitive it draws on)
 REGISTRY = {
-    "ohca": ohca,
-    "ohu": ohu,
-    "ohca_trend": ohca_trend,
-    "ohu_trend": ohu_trend,
-    "map": gridded_anomaly,
+    "ohca": (ohca, "integral"),
+    "ohu": (ohu, "integral"),
+    "ohca_trend": (ohca_trend, "integral"),
+    "ohu_trend": (ohu_trend, "integral"),
+    "map": (gridded_anomaly, "map"),
+    "field": (field, "map"),
 }
 
 
-def apply(names, maps, level, window=None):
-    """Build the named deliverables for every constituent.
+def _build(name, primitives, window, field_units):
+    recipe, primitive = REGISTRY[name]
+    out = recipe(primitives, window)
+    return out.assign_attrs(field_units=field_units, reduction=REDUCTION[primitive])
+
+
+def apply(names, maps, level, window=None, field_units=""):
+    """Build the named deliverables for every constituent, each stamped with `field_units` (the
+    submission's published units) and `reduction` (the primitive it draws on).
 
     -> {tag: {quantity_name: DataArray(realization, ...)}}
     """
     for name in names:
         if name not in REGISTRY:
             raise SystemExit("unknown quantity %r; known: %s" % (name, list(REGISTRY)))
-    return {tag: {name: REGISTRY[name](primitives, window) for name in names}
+    return {tag: {name: _build(name, primitives, window, field_units) for name in names}
             for tag, primitives in maps.items()}

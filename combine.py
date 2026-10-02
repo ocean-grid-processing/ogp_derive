@@ -10,7 +10,7 @@ Step 6 — combine. Fold the constituents into the synthetic level:
     value(q) = sum_i n_fac_i * value_i(q)
     sd(q)    = sum_i n_fac_i * sd_i(q)      worst-case, summed after the collapse
 into one dataset per level: each `q` and `q_sd`, plus the footprint area/volume (both from the mask
-step) and the physical constants as attributes. Packaging turns the extensive quantities into per-area
+step) and the `quantity` table as attributes. Packaging turns the extensive quantities into per-area
 densities from these.
 
 A masked constituent carries NaN below its first gap (contiguous_from_top), meaning "contributes
@@ -22,6 +22,8 @@ intersection. Those quantities combine nan-aware instead — a missing constitue
 is NaN only where every constituent is absent — so the gridded footprint is the same union the integral
 already sums over.
 """
+import json
+
 import xarray as xr
 
 
@@ -65,23 +67,28 @@ def _nfac_sum(per_constituent, contributors, quantity, key):
     return sum(terms[1:], terms[0])
 
 
-def combine_synthetic(per_constituent, level, area_m2, volume_m3, constants):
-    """See step 6. -> xr.Dataset for one synthetic level. Area and volume come from the mask step."""
+def combine_synthetic(per_constituent, level, area_m2, volume_m3, quantity):
+    """See step 6. -> xr.Dataset for one synthetic level. Area and volume come from the mask step;
+    `quantity` is the constituents' ingest [quantity] table (dict), stamped as one compact-JSON attr."""
     contributors = level.contributors
     quantities = per_constituent[contributors[0].tag]        # same quantity set for every constituent
 
     data = {}
     for q in quantities:
         data[q] = _nfac_sum(per_constituent, contributors, q, "value")
-        # arithmetic drops attrs; carry the quantity's own metadata (e.g. a trend's `per`) from a source
-        data[q].attrs = dict(per_constituent[contributors[0].tag][q]["value"].attrs)
+        # arithmetic drops attrs; carry the quantity's own metadata (`field_units`, `reduction`, a
+        # trend's `per`) from a source, onto the value and its standard deviation alike
+        attrs = dict(per_constituent[contributors[0].tag][q]["value"].attrs)
+        data[q].attrs = attrs
         sd = _nfac_sum(per_constituent, contributors, q, "sd")
         if sd is not None:
             data[q + "_sd"] = sd
+            data[q + "_sd"].attrs = dict(attrs)
 
     blob = xr.Dataset(data)
     blob.attrs["level"] = level.name
     blob.attrs["area_m2"] = area_m2
-    blob.attrs["volume_m3"] = volume_m3
-    blob.attrs.update(constants)                              # cp0, rho0 (if the submissions carried them)
+    if volume_m3 is not None:                                 # absent for a level with no vertical extent
+        blob.attrs["volume_m3"] = volume_m3
+    blob.attrs["quantity"] = json.dumps(quantity, separators=(",", ":"))
     return blob

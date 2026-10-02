@@ -1,8 +1,10 @@
 """Step 1 (load) and the final write.
 
 `load_submissions` reads each native-level submission (mean field) and, unless mean-only, its member
-sibling, and stacks them as `field_value` on a leading `realization` axis (index 0 = mean field, the
-rest = members), so downstream steps treat every realization the same way.
+sibling — the `<NAME>ENS_` file publish wrote beside the `<NAME>_` submission, NAME being the quantity's
+name from the submission's `quantity` attr — and stacks them as `field_value` on a leading
+`realization` axis (index 0 = mean field, the rest = members), so downstream steps treat every
+realization the same way.
 
 `load_bathy` reads the standard bathymetry as a depth grid.
 
@@ -15,6 +17,8 @@ import os
 
 import numpy as np
 import xarray as xr
+
+import contracts
 
 # This step's identity, used to namespace its provenance (`ohc_derive_run_config` / `_run_facts` /
 # `_code_version`). Every step rolls all `*_run_config` / `_run_facts` / `_code_version` forward and
@@ -42,18 +46,31 @@ def _to_tlatlon(da):
         {"TIME": "time", "LATITUDE": "lat", "LONGITUDE": "lon"})
 
 
-def _member_sibling(path):
+def _member_sibling(path, quantity_name):
+    """The member file that publish wrote next to a submission: publish names the pair
+    `<NAME>_…` / `<NAME>ENS_…` from the quantity's name (upper-cased), so the same name resolves
+    the sibling here. Errors if the submission doesn't carry the prefix its quantity attr implies."""
+    prefix = quantity_name.upper() + "_"
     base = os.path.basename(path)
-    if not base.startswith("OHC_"):
-        return None
-    return os.path.join(os.path.dirname(path), "OHCENS_" + base[len("OHC_"):])
+    if not base.startswith(prefix):
+        raise SystemExit("%s does not carry the %s prefix its quantity attr (name=%r) implies"
+                         % (base, prefix, quantity_name))
+    return os.path.join(os.path.dirname(path), prefix[:-1] + "ENS_" + base[len(prefix):])
 
 
-def _load_members(path):
-    sib = _member_sibling(path)
-    if sib is None or not os.path.exists(sib):
+def _quantity(attrs, path):
+    """The submission's `quantity` attr (the ingest [quantity] table, compact JSON) -> dict."""
+    if "quantity" not in attrs:
+        raise SystemExit("%s has no `quantity` attr (expected a submission from the ingest publish step; "
+                         "a bare ME4OH file needs --contract ME4OH)" % os.path.basename(path))
+    return json.loads(attrs["quantity"])
+
+
+def _load_members(path, quantity_name):
+    sib = _member_sibling(path, quantity_name)
+    if not os.path.exists(sib):
         raise SystemExit("no member sibling for %s (looked for %s); pass --no-ensemble for mean only"
-                         % (os.path.basename(path), os.path.basename(sib) if sib else "OHCENS_..."))
+                         % (os.path.basename(path), os.path.basename(sib)))
     da = xr.open_dataset(sib, decode_times=True)["DATA"]
     return (da.transpose("MEMBER", "TIME", "LATITUDE", "LONGITUDE")
               .rename({"MEMBER": "realization", "TIME": "time", "LATITUDE": "lat", "LONGITUDE": "lon"})
@@ -69,8 +86,11 @@ def _stack(mean_da, member_da):
     return xr.concat([mean_r, members], dim="realization")
 
 
-def load_submissions(paths, with_members=True):
-    """paths -> {tag: {"field_value": DataArray(realization, time, lat, lon), "attrs": dict}}.
+def load_submissions(paths, with_members=True, contract=None):
+    """paths -> {tag: {"field_value": DataArray(realization, time, lat, lon), "attrs": dict,
+    "quantity": dict[, "inferred": dict]}} — `quantity` is the ingest [quantity] table the submission
+    carries, or, under a `contract` (see contracts.py), the table the contract implies; then `inferred`
+    records what was assumed and no members are loaded.
 
     Submissions are keyed by their native-level tag, and each level a synthetic level needs is selected
     by tag — so passing the whole pool and letting each run pick its constituents is fine. But that only
@@ -84,24 +104,32 @@ def load_submissions(paths, with_members=True):
         ds = xr.open_dataset(p, decode_times=True)
         if "DATA" not in ds.data_vars:
             raise SystemExit("%s has no DATA variable (expected an ME4OH submission)" % p)
-        tag = ds.attrs.get("mapped_layer") or ds.attrs.get("layer_m")
-        if not tag or "_" not in str(tag):
-            raise SystemExit("%s has no usable mapped_layer/layer_m attr (got %r)" % (p, tag))
-        tag = str(tag)
+        inferred = None
+        if contract is not None:
+            tag, quantity, inferred = contracts.infer(contract, p)
+        else:
+            tag = ds.attrs.get("mapped_layer") or ds.attrs.get("layer_m")
+            if not tag or "_" not in str(tag):
+                raise SystemExit("%s has no usable mapped_layer/layer_m attr (got %r); a bare ME4OH file "
+                                 "needs --contract ME4OH" % (p, tag))
+            tag = str(tag)
+            quantity = _quantity(ds.attrs, p)
         if tag in seen:
             raise SystemExit("two submissions map to native level %s:\n  %s\n  %s\n"
                              "the pool must hold exactly one file per native level." % (tag, seen[tag], p))
         seen[tag] = p
         mean_da = _to_tlatlon(ds["DATA"]).astype("float64")
-        members = _load_members(p) if with_members else None
-        subs[tag] = {"field_value": _stack(mean_da, members), "attrs": dict(ds.attrs)}
+        members = _load_members(p, quantity["name"]) if (with_members and inferred is None) else None
+        subs[tag] = {"field_value": _stack(mean_da, members), "attrs": dict(ds.attrs), "quantity": quantity}
+        if inferred is not None:
+            subs[tag]["inferred"] = inferred
     return subs
 
 
 def load_bathy(path):
     """The standard bathymetry (etopo60.cdf) -> DataArray(lat, lon), seafloor depth in metres.
 
-    This is the same file ohc_ingest pins the mapping grid to: relief variable ROSE (metres, negative
+    This is the same file localgp_ogp_ingest pins the mapping grid to: relief variable ROSE (metres, negative
     below sea level) on dims ETOPO60Y (latitude) and ETOPO60X (longitude), row-major [lat, lon]. We
     read it as-is, so lat/lon come out in the mapping-grid order the submissions also carry, and negate
     the relief to positive-down depth to match ingest's seabed convention.
@@ -131,8 +159,14 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
     require_top = cfg.require_top if cfg.require_top is not None else level.require_top
     blob.attrs["%s_code_version" % STAGE] = cfg.code_version
     blob.attrs["%s_run_config" % STAGE] = _compact(vars(cfg))
-    blob.attrs["%s_run_facts" % STAGE] = _compact({
+    inferred = {t: submissions[t]["inferred"] for t in contributors if "inferred" in submissions[t]}
+    facts = {
         "level": level.name,
+        "identity_level": level.identity,
+        "levels_file": getattr(cfg, "levels", None),
+        "level_plan": {"require_top": require_top,
+                       "contributors": [{"tag": c.tag, "n_fac": c.n_fac, "top": c.top, "bottom": c.bottom}
+                                        for c in level.contributors]},
         "quantities": cfg.quantities,
         "mask": cfg.mask,
         "require_top": require_top,
@@ -142,9 +176,11 @@ def stamp_chain_provenance(blob, level, cfg, submissions):
         "volume_m3": blob.attrs.get("volume_m3"),
         "constituents": contributors,
         "n_fac": {c.tag: c.n_fac for c in level.contributors},
-        "cp0": blob.attrs.get("cp0"),
-        "rho0": blob.attrs.get("rho0"),
-    })
+        "quantity": _maybe_json(blob.attrs.get("quantity")),
+    }
+    if inferred:
+        facts["inferred_config"] = inferred                       # what --contract filled in, per constituent
+    blob.attrs["%s_run_facts" % STAGE] = _compact(facts)
 
 
 def _record_span(blob):

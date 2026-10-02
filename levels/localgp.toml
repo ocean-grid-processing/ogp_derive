@@ -1,0 +1,56 @@
+# Synthetic-level plan for LocalGP's native layers.
+#
+# A synthetic level is an n_fac-weighted sum of native levels ("constituents"), listed shallowest
+# first. `n_fac` scales a thin measured layer up to the slab it stands in for; `top`/`bottom` are the
+# constituent's own dbar bounds. `require_top` is the metres of the level's own top that must be
+# defined for a cell to survive under contiguous_from_top. The n_fac-weighted thicknesses of a level's
+# constituents must add up to the level's thickness (high - low); derive checks this on load.
+#
+# 15_20 x3 stands in for 0-15 + 15-20 (the top 20 m LocalGP maps as one thin layer);
+# 1800_1850 x3 stands in for 1850-2000 (the bottom 150 m).
+
+[[level]]
+name = "0_300"
+require_top = 300
+contributors = [
+  { tag = "15_20",  n_fac = 3, top = 15, bottom = 20  },
+  { tag = "15_300", n_fac = 1, top = 15, bottom = 300 },
+]
+
+[[level]]
+name = "0_700"
+require_top = 300
+contributors = [
+  { tag = "15_20",   n_fac = 3, top = 15,  bottom = 20  },
+  { tag = "15_300",  n_fac = 1, top = 15,  bottom = 300 },
+  { tag = "300_700", n_fac = 1, top = 300, bottom = 700 },
+]
+
+[[level]]
+name = "0_1000"
+require_top = 300
+contributors = [
+  { tag = "15_20",    n_fac = 3, top = 15,  bottom = 20   },
+  { tag = "15_300",   n_fac = 1, top = 15,  bottom = 300  },
+  { tag = "300_700",  n_fac = 1, top = 300, bottom = 700  },
+  { tag = "700_1000", n_fac = 1, top = 700, bottom = 1000 },
+]
+
+[[level]]
+name = "700_2000"
+require_top = 300
+contributors = [
+  { tag = "700_1850",  n_fac = 1, top = 700,  bottom = 1850 },
+  { tag = "1800_1850", n_fac = 3, top = 1800, bottom = 1850 },
+]
+
+[[level]]
+name = "0_2000"
+require_top = 300
+contributors = [
+  { tag = "15_20",     n_fac = 3, top = 15,   bottom = 20   },
+  { tag = "15_300",    n_fac = 1, top = 15,   bottom = 300  },
+  { tag = "300_700",   n_fac = 1, top = 300,  bottom = 700  },
+  { tag = "700_1850",  n_fac = 1, top = 700,  bottom = 1850 },
+  { tag = "1800_1850", n_fac = 3, top = 1800, bottom = 1850 },
+]

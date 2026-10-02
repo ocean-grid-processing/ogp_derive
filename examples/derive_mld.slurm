@@ -16,6 +16,9 @@ module load anaconda/2023.09
 conda activate ohc_crosscheck
 
 cd $SLURM_SUBMIT_DIR
+# MLD: a single submission, so no --level/--levels (the identity level); the field as published, with
+# its ensemble spread. as_published verifies the footprint our publish step enforced.
+#   sbatch derive_mld.slurm
 tag=260921-OP20260507
 product_name=LocalGP
 author=Giglio_etal2026
